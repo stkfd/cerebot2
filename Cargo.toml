@@ -1,0 +1,36 @@
+[package]
+name = "cerebot2"
+description = "Cerebot v2, a twitch chat bot. Exists partially to further development of tmi-rs, partially for its own sake."
+repository = "https://github.com/cere42/cerebot2"
+version = "0.1.0"
+authors = ["cerebellum42 <cere@fastmail.fm>"]
+edition = "2018"
+
+[dependencies.tmi-rs]
+git = "https://github.com/cere42/tmi-rs.git"
+rev = "da8cb848"
+
+[dependencies]
+futures = "^0.3"
+parking_lot = "0.9.0"
+log = "0.4.8"
+tokio = "0.2.0-alpha.6"
+tokio-executor = "0.2.0-alpha.6"
+serde = { version = "1.0.102", features = ["derive"] }
+serde_json = "1.0.41"
+env_logger = "0.7.1"
+toml = "0.5.5"
+derive_builder = "0.9.0"
+fnv = "1.0.6"
+dirs = "2.0.2"
+diesel = { version = "1.4.3", features = ["postgres", "r2d2", "chrono", "serde_json", "uuid"] }
+diesel-derive-enum = { version = "0.4", features = ["postgres"] }
+r2d2 = "0.8.6"
+r2d2_redis = "0.12.0"
+chrono = { version = "0.4.9", features = ["serde"] }
+uuid = { version = "0.6", features = ["serde"] }
+bincode = "1.2.0"
+
+[[bin]]
+name = "cerebot2"
+path = "src/main.rs"
