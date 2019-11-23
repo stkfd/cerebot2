@@ -6,7 +6,7 @@ extern crate diesel;
 
 use std::error::Error;
 
-use crate::cerebot::Cerebot;
+use crate::cerebot::{Cerebot, RunResult};
 use crate::config::CerebotConfig;
 
 mod cache;
@@ -22,5 +22,6 @@ mod schema;
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let mut bot = Cerebot::create(CerebotConfig::load()?)?;
-    bot.run().await
+    while let RunResult::Restart = bot.run().await? {}
+    Ok(())
 }

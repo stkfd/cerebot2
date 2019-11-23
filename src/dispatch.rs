@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use fnv::FnvHashMap;
 use futures::future::ready;
+use futures::stream;
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use parking_lot::RwLock;
 use tmi_rs::event::Event;
@@ -38,7 +39,7 @@ impl<'a> EventDispatch {
 
     pub fn register_handler(&self, group_id: HandlerGroupId, handler: Box<dyn EventHandler>) {
         if let Some(group) = self.event_groups.read().get(&group_id) {
-            group.handlers.write().push(handler);
+            group.handlers.write().push(Arc::new(handler));
         }
     }
 
@@ -47,16 +48,25 @@ impl<'a> EventDispatch {
         evt: &Arc<Event<String>>,
         context: &BotContext,
     ) -> Result<(), Error> {
-        for group in self.event_groups.read().values() {
-            if group.matcher.match_event(&evt).await {
-                group.execute(evt, context).await?;
+        let event_groups = self.event_groups.read();
+        let mut futures = stream::iter(event_groups.values())
+            .filter(|group| group.matcher.match_event(&evt))
+            .map(|group| group.execute(evt, context))
+            .buffer_unordered(5);
+
+        loop {
+            let next: Option<_> = futures.next().await;
+            if let Some(next) = next {
+                next?;
+            } else {
+                break;
             }
         }
         Ok(())
     }
 }
 
-pub trait EventHandler {
+pub trait EventHandler: Send + Sync {
     fn init(ctx: &BotContext) -> Self
     where
         Self: Sized;
@@ -70,13 +80,15 @@ pub const fn ok_now() -> Result<Response, Error> {
 }
 
 #[allow(dead_code)]
-pub fn ok_fut(fut: impl Future<Output = Result<(), Error>> + 'static) -> Result<Response, Error> {
+pub fn ok_fut(
+    fut: impl Future<Output = Result<(), Error>> + Send + 'static,
+) -> Result<Response, Error> {
     Ok(Response::OkFuture(Box::pin(fut)))
 }
 
 #[allow(dead_code)]
 pub fn respond_with(
-    stream: impl Stream<Item = Result<ClientMessage<String>, Error>> + 'static,
+    stream: impl Stream<Item = Result<ClientMessage<String>, Error>> + Send + 'static,
 ) -> Result<Response, Error> {
     Ok(Response::Response(Box::pin(stream)))
 }
@@ -84,19 +96,19 @@ pub fn respond_with(
 #[allow(dead_code)]
 pub enum Response {
     OkNow,
-    OkFuture(Pin<Box<dyn Future<Output = Result<(), Error>>>>),
-    Response(Pin<Box<dyn Stream<Item = Result<ClientMessage<String>, Error>>>>),
+    OkFuture(Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
+    Response(Pin<Box<dyn Stream<Item = Result<ClientMessage<String>, Error>> + Send>>),
 }
 
-pub trait EventMatcher {
-    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool>>>;
+pub trait EventMatcher: Send + Sync {
+    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool> + Send>>;
 }
 impl<T, Fut> EventMatcher for T
 where
-    for<'x> T: Fn(&'x Arc<Event<String>>) -> Fut,
-    Fut: Future<Output = bool> + 'static,
+    for<'x> T: Fn(&'x Arc<Event<String>>) -> Fut + Send + Sync,
+    Fut: Future<Output = bool> + 'static + Send,
 {
-    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool>>> {
+    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool> + Send>> {
         Pin::from(Box::new(self(e)))
     }
 }
@@ -106,25 +118,21 @@ pub struct HandlerGroupId(usize);
 
 struct EventHandlerGroup {
     matcher: Box<dyn EventMatcher>,
-    handlers: RwLock<Vec<Box<dyn EventHandler>>>,
+    handlers: RwLock<Vec<Arc<Box<dyn EventHandler>>>>,
 }
 
 impl EventHandlerGroup {
-    async fn execute(
-        &self,
-        evt: &Arc<Event<String>>,
-        context: &BotContext,
-    ) -> Result<(), Error> {
-        for handler in self.handlers.read().iter() {
+    async fn execute(&self, evt: &Arc<Event<String>>, context: &BotContext) -> Result<(), Error> {
+        let handlers = self.handlers.read().iter().cloned().collect::<Vec<_>>();
+        for handler in handlers {
             match handler.run(evt)? {
                 Response::Response(stream) => {
-                    let sender = &mut context.sender.clone();
                     stream
                         .inspect_err(|err| error!("Error in message handler response: {}", err))
                         .into_stream()
                         .filter_map(|msg_result| ready(msg_result.ok()))
                         .map(Ok)
-                        .forward(sender)
+                        .forward(&mut context.sender.clone())
                         .await
                         .map_err(Error::Tmi)?;
                 }
@@ -186,7 +194,10 @@ pub mod matchers {
 
     pub struct MatchAll();
     impl EventMatcher for MatchAll {
-        fn match_event(&self, _e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool>>> {
+        fn match_event(
+            &self,
+            _e: &Arc<Event<String>>,
+        ) -> Pin<Box<dyn Future<Output = bool> + Send>> {
             Box::pin(ready(true))
         }
     }

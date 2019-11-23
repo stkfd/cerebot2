@@ -60,10 +60,27 @@ pub struct NewTwitchUser<'a> {
     pub created_at: DateTime<FixedOffset>,
 }
 
+#[derive(AsChangeset)]
+#[table_name = "users"]
+pub struct UpdateTwitchUser<'a> {
+    pub twitch_user_id: i32,
+    pub name: &'a str,
+    pub display_name: Option<&'a str>,
+    pub previous_names: Option<Vec<&'a str>>,
+    pub previous_display_names: Option<Vec<&'a str>>,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ChatUserInfo<'a> {
     pub twitch_user_id: i32,
     pub name: &'a str,
     pub display_name: Option<&'a str>,
+}
+
+impl ChatUserInfo<'_> {
+    pub fn data_matches(&self, user: &User) -> bool {
+        self.name == user.name && self.display_name == user.display_name.as_ref().map(|s| s.as_str())
+    }
 }
 
 impl Cacheable<i32> for User {
@@ -76,7 +93,7 @@ impl Cacheable<i32> for User {
     }
 
     fn cache_life(&self) -> Duration {
-        Duration::from_secs(60 * 60)
+        Duration::from_secs(60 * 10)
     }
 }
 
@@ -97,20 +114,23 @@ pub async fn get_or_insert_event_user(
     ctx: &DbContext,
     event: &Arc<Event<String>>,
 ) -> Result<Option<User>, Error> {
-    if let Some(id) = event_user_id(&*event)? {
+    if event_has_user_info(&**event) {
         let event = event.clone();
         let ctx = ctx.clone();
 
         blocking::run(move || {
-            let redis = &mut *ctx.redis_pool.get()?;
             let pg = &*ctx.db_pool.get()?;
+            let redis = &mut* ctx.redis_pool.get()?;
+            let user_info = event_user_info(&*event)?.unwrap();
 
-            if let Some(user) = get_user(pg, redis, id)? {
-                Ok(Some(user))
-            } else if let Some(ref user_info) = event_user_info(&*event)? {
-                Ok(Some(insert_user(pg, user_info)?))
+            if let Some(user) = get_user(pg, redis, user_info.twitch_user_id)? {
+                if !user_info.data_matches(&user) {
+                    Ok(Some(update_user(pg, redis, &user_info)?))
+                } else {
+                    Ok(Some(user))
+                }
             } else {
-                Ok(None)
+                Ok(Some(insert_user(pg, &user_info)?))
             }
         })
         .await
@@ -128,33 +148,65 @@ fn get_user(
         trace!("Cache hit for user {}", cached.name);
         Ok(Some(cached))
     } else {
-        let query_result = users::table
-            .filter(users::twitch_user_id.eq(twitch_id))
-            .first::<User>(pg);
-
-        match query_result {
-            Ok(user) => {
-                user.cache_set(redis)?;
-                Ok(Some(user))
-            }
-            Err(diesel::result::Error::NotFound) => Ok(None),
-            Err(err) => Err(Error::Database(err)),
+        let query_result = get_user_no_cache(pg, twitch_id);
+        if let Ok(Some(user)) = &query_result {
+            user.cache_set(redis)?;
         }
+
+        query_result
     }
 }
 
-fn update_user(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User, Error> {
-    diesel::insert_into(users::table)
-        .values(NewTwitchUser {
+fn get_user_no_cache(pg: &PgConnection, twitch_id: i32) -> Result<Option<User>, Error> {
+    let query_result = users::table
+        .filter(users::twitch_user_id.eq(twitch_id))
+        .first::<User>(pg);
+
+    match query_result {
+        Ok(user) => {
+            Ok(Some(user))
+        }
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(err) => Err(Error::Database(err)),
+    }
+}
+
+fn update_user(
+    conn: &PgConnection,
+    redis: &mut dyn redis::ConnectionLike,
+    user_info: &ChatUserInfo<'_>
+) -> Result<User, Error> {
+    let user = get_user_no_cache(conn, user_info.twitch_user_id)?
+        .ok_or_else(|| Error::UserNotFound(user_info.twitch_user_id))?;
+
+    let mut previous_names: Vec<&str> = user.previous_names
+        .as_ref()
+        .map(|names| names.iter().map(AsRef::as_ref).collect())
+        .unwrap_or_else(|| vec![]);
+    if user_info.name != user.name {
+        previous_names.push(&user.name);
+    }
+
+    let mut previous_display_names: Vec<&str> = user.previous_display_names
+        .as_ref()
+        .map(|names| names.iter().map(AsRef::as_ref).collect())
+        .unwrap_or_else(|| vec![]);
+    if user.display_name.as_ref().map(AsRef::as_ref) != user_info.display_name {
+        previous_display_names.push(&user.display_name.as_ref().unwrap());
+    }
+
+    let updated_user = diesel::update(users::table.filter(users::twitch_user_id.eq(user_info.twitch_user_id)))
+        .set(UpdateTwitchUser {
             twitch_user_id: user_info.twitch_user_id,
             name: user_info.name,
             display_name: user_info.display_name,
-            previous_names: None,
-            previous_display_names: None,
-            created_at: Local::now().into(),
+            previous_names: Some(previous_names),
+            previous_display_names: Some(previous_display_names),
         })
-        .get_result(conn)
-        .map_err(Into::into)
+        .get_result::<User>(conn)?;
+
+    updated_user.cache_set(redis)?;
+    Ok(updated_user)
 }
 
 fn insert_user(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User, Error> {
@@ -169,6 +221,15 @@ fn insert_user(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User
         })
         .get_result(conn)
         .map_err(Into::into)
+}
+
+fn event_has_user_info(event: &Event<String>) -> bool {
+    match event {
+        Event::UserNotice(_)
+        | Event::PrivMsg(_)
+        | Event::Whisper(_)  => true,
+        _ => false
+    }
 }
 
 fn event_user_info(event: &Event<String>) -> Result<Option<ChatUserInfo>, Error> {

@@ -1,26 +1,29 @@
 use std::error::Error as ErrorTrait;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
-use futures::future::join;
+use diesel::r2d2::ConnectionManager;
 use futures::{SinkExt, StreamExt};
+use futures::future::{join, ready};
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
-use tmi_rs::rate_limits::RateLimiterConfig;
 use tmi_rs::{
     ChatSender, ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder,
 };
+use tmi_rs::event::Event;
+use tmi_rs::rate_limits::RateLimiterConfig;
+use tokio::timer::Interval;
 
 use crate::config::CerebotConfig;
 use crate::db::{Channel, persist_event_queue};
 use crate::diesel::prelude::*;
-use crate::dispatch::matchers::MatchAll;
 use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
+use crate::dispatch::matchers::MatchAll;
 use crate::error::Error;
 use crate::handlers::LoggingHandler;
 use crate::schema::channels;
-use tokio::timer::Interval;
-use std::time::Duration;
 
 pub struct Cerebot {
     chat_client: TwitchClient,
@@ -41,7 +44,7 @@ impl Cerebot {
         })
     }
 
-    pub async fn run(&mut self) -> Result<(), Box<dyn ErrorTrait>> {
+    pub async fn run(&mut self) -> Result<RunResult, Box<dyn ErrorTrait>> {
         debug!("Creating database connection pool...");
         let manager = ConnectionManager::<PgConnection>::new(self.config.db());
         let db_pool = r2d2::Pool::builder()
@@ -69,6 +72,7 @@ impl Cerebot {
                 redis_pool,
             },
             sender,
+            bot: BotHandle::new(),
         };
 
         // log any connection errors
@@ -90,7 +94,10 @@ impl Cerebot {
 
         // join a channel
         for channel in startup_channels {
-            context.sender.send(ClientMessage::join(channel.name)).await?;
+            context
+                .sender
+                .send(ClientMessage::join(channel.name))
+                .await?;
         }
 
         let heartbeat_ctx = context.db_context.clone();
@@ -111,22 +118,72 @@ impl Cerebot {
         let process_messages = async {
             let dispatch = &dispatch;
             let context = &context;
-            receiver.for_each_concurrent(Some(100), |event| async move {
-                if let Err(err) = dispatch.dispatch(&event, context).await {
-                    error!("Event handler failed: {}", err)
-                }
-            }).await;
+            receiver
+                .take_while(|event| {
+                    if context.bot.should_restart()  {
+                        return ready(false);
+                    }
+                    match &**event {
+                        Event::Reconnect(_) => {
+                            // mark for restart on next message
+                            context.bot.restart();
+                        },
+                        _ => {}
+                    }
+                    ready(true)
+                })
+                .for_each_concurrent(Some(10), |event| {
+                    async move {
+                        // run event handlers
+                        if let Err(err) = dispatch.dispatch(&event, context).await {
+                            error!("Event handler failed: {}", err)
+                        }
+                    }
+                })
+                .await;
         };
 
         join(process_messages, process_errors).await;
-        Ok(())
+        if context.bot.should_restart() {
+            Ok(RunResult::Restart)
+        } else {
+            Ok(RunResult::Ok)
+        }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct BotHandle {
+    restart: Arc<AtomicBool>,
+}
+
+impl BotHandle {
+    fn new() -> Self {
+        BotHandle {
+            restart: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Restarts the bot after handling the current message
+    pub fn restart(&self) {
+        self.restart.store(true, Ordering::SeqCst)
+    }
+
+    fn should_restart(&self) -> bool {
+        self.restart.load(Ordering::SeqCst)
+    }
+}
+
+pub enum RunResult {
+    Ok,
+    Restart,
 }
 
 #[derive(Clone)]
 pub struct BotContext {
     pub db_context: DbContext,
     pub sender: ChatSender,
+    pub bot: BotHandle,
 }
 
 #[derive(Clone)]

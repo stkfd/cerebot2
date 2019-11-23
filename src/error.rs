@@ -17,11 +17,7 @@ pub enum Error {
     ConnectionPool(r2d2::Error),
     Redis(redis::RedisError),
     Tmi(tmi_rs::Error),
-    Handler(
-        &'static str,
-        &'static str,
-        Option<Box<dyn ErrorTrait + Send>>,
-    ),
+    UserNotFound(i32),
 }
 
 impl From<tmi_rs::Error> for Error {
@@ -70,12 +66,8 @@ impl fmt::Display for Error {
             Error::Tmi(source) => write!(f, "tmi-rs error: {}", source),
             Error::Redis(source) => write!(f, "Redis error: {}", source),
             Error::Database(source) => write!(f, "Database error: {}", source),
-            Error::Handler(handler_name, details, source) => {
-                if let Some(source) = source {
-                    write!(f, "Error in {}: {}. {}", handler_name, details, source)
-                } else {
-                    write!(f, "Error in {}: {}", handler_name, details)
-                }
+            Error::UserNotFound(twitch_id) => {
+                write!(f, "User with twitch ID {} not found", twitch_id)
             }
         }
     }

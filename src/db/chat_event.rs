@@ -14,8 +14,8 @@ use fnv::FnvHashMap;
 use r2d2_redis::redis;
 use r2d2_redis::redis::PipelineCommands;
 use serde::{Deserialize, Serialize};
-use tmi_rs::event::*;
 use tmi_rs::event::tags::*;
+use tmi_rs::event::*;
 use tmi_rs::irc_constants::RPL_ENDOFMOTD;
 use tokio_executor::blocking;
 use uuid::Uuid;
@@ -65,9 +65,11 @@ pub struct NewChatEvent {
 impl redis::FromRedisValue for NewChatEvent {
     fn from_redis_value(v: &redis::Value) -> Result<Self, redis::RedisError> {
         if let redis::Value::Data(data) = v {
-            Ok(bincode::deserialize::<'_, NewChatEvent>(&data).map_err(|_| {
-                redis::RedisError::from((redis::ErrorKind::TypeError, "Deserialization failed"))
-            })?)
+            Ok(
+                bincode::deserialize::<'_, NewChatEvent>(&data).map_err(|_| {
+                    redis::RedisError::from((redis::ErrorKind::TypeError, "Deserialization failed"))
+                })?,
+            )
         } else {
             Err(redis::RedisError::from((
                 redis::ErrorKind::TypeError,
@@ -79,8 +81,8 @@ impl redis::FromRedisValue for NewChatEvent {
 
 impl redis::ToRedisArgs for &NewChatEvent {
     fn write_redis_args<W>(&self, out: &mut W)
-        where
-            W: ?Sized + redis::RedisWrite,
+    where
+        W: ?Sized + redis::RedisWrite,
     {
         out.write_arg(&bincode::serialize(*self).unwrap());
     }
@@ -187,7 +189,8 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
                 .rpush("cb:persist_event_queue", &db_entry)
                 .query(conn)
                 .map_err(Into::into)
-        }).await
+        })
+        .await
     } else {
         Ok(())
     }
@@ -208,7 +211,8 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<(), Error> {
             .values(queued_events)
             .execute(pg_conn)?;
         Ok(())
-    }).await
+    })
+    .await
 }
 
 #[derive(FromSqlRow, AsExpression, Debug, Serialize, Deserialize, PartialEq)]
@@ -238,7 +242,9 @@ impl Deref for Tags {
 impl FromSql<Jsonb, Pg> for Tags {
     fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
         let value = <serde_json::Value as FromSql<Jsonb, Pg>>::from_sql(bytes)?;
-        Ok(Tags(serde_json::from_value::<FnvHashMap<String, String>>(value)?))
+        Ok(Tags(serde_json::from_value::<FnvHashMap<String, String>>(
+            value,
+        )?))
     }
 }
 
