@@ -67,7 +67,7 @@ impl Cerebot {
         } = self.chat_client.connect().await?;
         info!("Twitch chat connected.");
 
-        let mut context = SharedBotContext(Arc::new(InnerBotContext {
+        let context = SharedBotContext(Arc::new(InnerBotContext {
             db_context: DbContext {
                 db_pool,
                 redis_pool,

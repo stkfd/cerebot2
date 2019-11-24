@@ -1,11 +1,10 @@
-use std::borrow::Cow;
 use std::iter::FromIterator;
 
+use diesel::expression::sql_literal::sql;
 use diesel::prelude::*;
-use diesel::sql_types::{Integer, Text};
+use diesel::sql_types::Text;
 use diesel_derive_enum::DbEnum;
 use fnv::FnvHashSet;
-use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
 use tokio_executor::blocking;
 use tokio_executor::blocking::Blocking;
@@ -13,23 +12,11 @@ use tokio_executor::blocking::Blocking;
 use crate::cerebot::DbContext;
 use crate::error::Error;
 use crate::schema::{permissions, user_permissions};
-use diesel::deserialize::FromSql;
-use diesel::deserialize::QueryableByName;
-use diesel::expression::sql_literal::sql;
-use diesel::pg::Pg;
-use diesel::query_builder::AsQuery;
-use diesel::row::NamedRow;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PermissionState {
     Allow,
     Deny,
-}
-
-impl QueryableByName<Pg> for PermissionState {
-    fn build<R: NamedRow<Pg>>(row: &R) -> diesel::deserialize::Result<Self> {
-        row.get("user_permission_state")
-    }
 }
 
 #[derive(Queryable)]
@@ -55,21 +42,6 @@ pub struct UserPermission {
     pub user_permission_state: PermissionState,
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
-pub struct PermissionAndState {
-    pub name: String,
-    pub permission_state: PermissionState,
-}
-
-impl QueryableByName<Pg> for PermissionAndState {
-    fn build<R: NamedRow<Pg>>(row: &R) -> diesel::deserialize::Result<Self> {
-        Ok(PermissionAndState {
-            name: row.get::<Text, _>("name")?,
-            permission_state: row.get::<PermissionStateMapping, _>("permission_state")?,
-        })
-    }
-}
-
 pub fn get_permission_state(
     ctx: &DbContext,
     user_id: i32,
@@ -84,6 +56,7 @@ pub fn get_permission_state(
                 "coalesce(user_permission_state, default_state)",
             ))
             .filter(permissions::name.eq(permission))
+            .filter(user_permissions::user_id.eq(user_id))
             .left_outer_join(user_permissions::table)
             .first::<PermissionState>(&*ctx.db_pool.get()?)
             .map_err(Into::into)
@@ -104,6 +77,7 @@ pub fn get_permission_states(
                 "permission.name, coalesce(user_permission_state, default_state)",
             ))
             .filter(permissions::name.eq_any(permissions))
+            .filter(user_permissions::user_id.eq(user_id))
             .left_outer_join(user_permissions::table)
             .load::<(String, PermissionState)>(&*ctx.db_pool.get()?)
             .map_err(Into::into)
