@@ -17,6 +17,7 @@ mod dispatch;
 mod error;
 mod handlers;
 mod schema;
+mod state;
 
 #[tokio::main(multi_thread)]
 async fn main() -> Result<(), Box<dyn Error>> {

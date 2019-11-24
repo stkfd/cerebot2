@@ -1,1 +1,2 @@
--- This file should undo anything in `up.sql`
+drop trigger set_updated_at on channels;
+drop trigger set_updated_at on users;

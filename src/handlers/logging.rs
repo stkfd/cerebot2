@@ -3,21 +3,23 @@ use std::sync::Arc;
 use tmi_rs::event::tags::*;
 use tmi_rs::event::*;
 
-use crate::cerebot::BotContext;
+use crate::cerebot::SharedBotContext;
 use crate::db::{get_or_save_channel, log_event, NewChannel};
 use crate::dispatch::{ok_fut, EventHandler, Response};
 use crate::error::Error;
 
 pub struct LoggingHandler {
-    ctx: BotContext,
+    ctx: SharedBotContext,
 }
 
 impl EventHandler for LoggingHandler {
-    fn init(ctx: &BotContext) -> Self
+    fn init(ctx: &SharedBotContext) -> Self
     where
         Self: Sized,
     {
-        LoggingHandler { ctx: ctx.clone() }
+        LoggingHandler {
+            ctx: (*ctx).clone(),
+        }
     }
 
     fn run(&self, event: &Arc<Event<String>>) -> Result<Response, Error> {

@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use tmi_rs::event::Event;
 use tmi_rs::ClientMessage;
 
-use crate::cerebot::BotContext;
+use crate::cerebot::SharedBotContext;
 use crate::error::Error;
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl<'a> EventDispatch {
     pub async fn dispatch(
         &self,
         evt: &Arc<Event<String>>,
-        context: &BotContext,
+        context: &SharedBotContext,
     ) -> Result<(), Error> {
         let event_groups = self.event_groups.read();
         let mut futures = stream::iter(event_groups.values())
@@ -67,7 +67,7 @@ impl<'a> EventDispatch {
 }
 
 pub trait EventHandler: Send + Sync {
-    fn init(ctx: &BotContext) -> Self
+    fn init(ctx: &SharedBotContext) -> Self
     where
         Self: Sized;
 
@@ -122,7 +122,11 @@ struct EventHandlerGroup {
 }
 
 impl EventHandlerGroup {
-    async fn execute(&self, evt: &Arc<Event<String>>, context: &BotContext) -> Result<(), Error> {
+    async fn execute(
+        &self,
+        evt: &Arc<Event<String>>,
+        context: &SharedBotContext,
+    ) -> Result<(), Error> {
         let handlers = self.handlers.read().iter().cloned().collect::<Vec<_>>();
         for handler in handlers {
             match handler.run(evt)? {

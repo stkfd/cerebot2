@@ -1,29 +1,30 @@
 use std::error::Error as ErrorTrait;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
-use futures::{SinkExt, StreamExt};
+use diesel::PgConnection;
 use futures::future::{join, ready};
+use futures::{SinkExt, StreamExt};
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
+use tmi_rs::event::Event;
+use tmi_rs::rate_limits::RateLimiterConfig;
 use tmi_rs::{
     ChatSender, ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder,
 };
-use tmi_rs::event::Event;
-use tmi_rs::rate_limits::RateLimiterConfig;
 use tokio::timer::Interval;
 
 use crate::config::CerebotConfig;
-use crate::db::{Channel, persist_event_queue};
+use crate::db::{create_permissions, persist_event_queue, Channel};
 use crate::diesel::prelude::*;
-use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
 use crate::dispatch::matchers::MatchAll;
+use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
 use crate::error::Error;
 use crate::handlers::LoggingHandler;
 use crate::schema::channels;
+use crate::state::BotState;
+use std::ops::Deref;
+use std::sync::Arc;
 
 pub struct Cerebot {
     chat_client: TwitchClient,
@@ -66,14 +67,14 @@ impl Cerebot {
         } = self.chat_client.connect().await?;
         info!("Twitch chat connected.");
 
-        let mut context = BotContext {
+        let mut context = SharedBotContext(Arc::new(InnerBotContext {
             db_context: DbContext {
                 db_pool,
                 redis_pool,
             },
             sender,
-            bot: BotHandle::new(),
-        };
+            state: Default::default(),
+        }));
 
         // log any connection errors
         let process_errors = error_receiver.for_each(|error| {
@@ -93,11 +94,9 @@ impl Cerebot {
         );
 
         // join a channel
+        let mut sender = context.sender.clone();
         for channel in startup_channels {
-            context
-                .sender
-                .send(ClientMessage::join(channel.name))
-                .await?;
+            sender.send(ClientMessage::join(channel.name)).await?;
         }
 
         let heartbeat_ctx = context.db_context.clone();
@@ -108,6 +107,8 @@ impl Cerebot {
                 persist_event_queue(&ctx).await.unwrap();
             }
         });
+
+        create_permissions(&context.db_context).await?;
 
         let dispatch = EventDispatch::default();
         dispatch
@@ -120,14 +121,14 @@ impl Cerebot {
             let context = &context;
             receiver
                 .take_while(|event| {
-                    if context.bot.should_restart()  {
+                    if context.state.should_restart() {
                         return ready(false);
                     }
                     match &**event {
                         Event::Reconnect(_) => {
                             // mark for restart on next message
-                            context.bot.restart();
-                        },
+                            context.state.restart();
+                        }
                         _ => {}
                     }
                     ready(true)
@@ -144,33 +145,11 @@ impl Cerebot {
         };
 
         join(process_messages, process_errors).await;
-        if context.bot.should_restart() {
+        if context.state.should_restart() {
             Ok(RunResult::Restart)
         } else {
             Ok(RunResult::Ok)
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct BotHandle {
-    restart: Arc<AtomicBool>,
-}
-
-impl BotHandle {
-    fn new() -> Self {
-        BotHandle {
-            restart: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    /// Restarts the bot after handling the current message
-    pub fn restart(&self) {
-        self.restart.store(true, Ordering::SeqCst)
-    }
-
-    fn should_restart(&self) -> bool {
-        self.restart.load(Ordering::SeqCst)
     }
 }
 
@@ -180,10 +159,20 @@ pub enum RunResult {
 }
 
 #[derive(Clone)]
-pub struct BotContext {
+pub struct SharedBotContext(Arc<InnerBotContext>);
+
+impl Deref for SharedBotContext {
+    type Target = InnerBotContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct InnerBotContext {
     pub db_context: DbContext,
     pub sender: ChatSender,
-    pub bot: BotHandle,
+    pub state: BotState,
 }
 
 #[derive(Clone)]

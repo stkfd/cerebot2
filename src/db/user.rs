@@ -79,7 +79,8 @@ pub struct ChatUserInfo<'a> {
 
 impl ChatUserInfo<'_> {
     pub fn data_matches(&self, user: &User) -> bool {
-        self.name == user.name && self.display_name == user.display_name.as_ref().map(|s| s.as_str())
+        self.name == user.name
+            && self.display_name == user.display_name.as_ref().map(|s| s.as_str())
     }
 }
 
@@ -97,19 +98,6 @@ impl Cacheable<i32> for User {
     }
 }
 
-fn event_user_id(event: &Event<String>) -> Result<Option<i32>, Error> {
-    let id = match event {
-        Event::GlobalUserState(data) => data.user_id(),
-        Event::UserNotice(data) => data.user_id(),
-        Event::PrivMsg(data) => data.user_id(),
-        Event::Whisper(data) => data.user_id(),
-        _ => {
-            return Ok(None);
-        }
-    }?;
-    Ok(Some(id as i32))
-}
-
 pub async fn get_or_insert_event_user(
     ctx: &DbContext,
     event: &Arc<Event<String>>,
@@ -120,7 +108,7 @@ pub async fn get_or_insert_event_user(
 
         blocking::run(move || {
             let pg = &*ctx.db_pool.get()?;
-            let redis = &mut* ctx.redis_pool.get()?;
+            let redis = &mut *ctx.redis_pool.get()?;
             let user_info = event_user_info(&*event)?.unwrap();
 
             if let Some(user) = get_user(pg, redis, user_info.twitch_user_id)? {
@@ -163,9 +151,7 @@ fn get_user_no_cache(pg: &PgConnection, twitch_id: i32) -> Result<Option<User>, 
         .first::<User>(pg);
 
     match query_result {
-        Ok(user) => {
-            Ok(Some(user))
-        }
+        Ok(user) => Ok(Some(user)),
         Err(diesel::result::Error::NotFound) => Ok(None),
         Err(err) => Err(Error::Database(err)),
     }
@@ -174,12 +160,13 @@ fn get_user_no_cache(pg: &PgConnection, twitch_id: i32) -> Result<Option<User>, 
 fn update_user(
     conn: &PgConnection,
     redis: &mut dyn redis::ConnectionLike,
-    user_info: &ChatUserInfo<'_>
+    user_info: &ChatUserInfo<'_>,
 ) -> Result<User, Error> {
     let user = get_user_no_cache(conn, user_info.twitch_user_id)?
         .ok_or_else(|| Error::UserNotFound(user_info.twitch_user_id))?;
 
-    let mut previous_names: Vec<&str> = user.previous_names
+    let mut previous_names: Vec<&str> = user
+        .previous_names
         .as_ref()
         .map(|names| names.iter().map(AsRef::as_ref).collect())
         .unwrap_or_else(|| vec![]);
@@ -187,7 +174,8 @@ fn update_user(
         previous_names.push(&user.name);
     }
 
-    let mut previous_display_names: Vec<&str> = user.previous_display_names
+    let mut previous_display_names: Vec<&str> = user
+        .previous_display_names
         .as_ref()
         .map(|names| names.iter().map(AsRef::as_ref).collect())
         .unwrap_or_else(|| vec![]);
@@ -195,15 +183,16 @@ fn update_user(
         previous_display_names.push(&user.display_name.as_ref().unwrap());
     }
 
-    let updated_user = diesel::update(users::table.filter(users::twitch_user_id.eq(user_info.twitch_user_id)))
-        .set(UpdateTwitchUser {
-            twitch_user_id: user_info.twitch_user_id,
-            name: user_info.name,
-            display_name: user_info.display_name,
-            previous_names: Some(previous_names),
-            previous_display_names: Some(previous_display_names),
-        })
-        .get_result::<User>(conn)?;
+    let updated_user =
+        diesel::update(users::table.filter(users::twitch_user_id.eq(user_info.twitch_user_id)))
+            .set(UpdateTwitchUser {
+                twitch_user_id: user_info.twitch_user_id,
+                name: user_info.name,
+                display_name: user_info.display_name,
+                previous_names: Some(previous_names),
+                previous_display_names: Some(previous_display_names),
+            })
+            .get_result::<User>(conn)?;
 
     updated_user.cache_set(redis)?;
     Ok(updated_user)
@@ -225,10 +214,8 @@ fn insert_user(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User
 
 fn event_has_user_info(event: &Event<String>) -> bool {
     match event {
-        Event::UserNotice(_)
-        | Event::PrivMsg(_)
-        | Event::Whisper(_)  => true,
-        _ => false
+        Event::UserNotice(_) | Event::PrivMsg(_) | Event::Whisper(_) => true,
+        _ => false,
     }
 }
 
