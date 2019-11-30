@@ -17,13 +17,13 @@ use serde::{Deserialize, Serialize};
 use tmi_rs::event::tags::*;
 use tmi_rs::event::*;
 use tmi_rs::irc_constants::RPL_ENDOFMOTD;
-use tokio_executor::blocking;
+use tokio::task;
 use uuid::Uuid;
 
-use crate::cerebot::DbContext;
-use crate::db::{get_channel, get_or_insert_event_user};
+use crate::db::{get_channel, User};
 use crate::error::Error;
 use crate::schema::chat_events;
+use crate::state::DbContext;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChatEventType {
@@ -92,7 +92,7 @@ impl redis::ToRedisArgs for &NewChatEvent {
 /// be persisted into the database at a later time
 pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<(), Error> {
     let ctx = ctx.clone();
-    let user_id = get_or_insert_event_user(&ctx, event).await?.map(|u| u.id);
+    let user_id = User::get_or_insert(&ctx, event).await?.map(|u| u.id);
 
     let db_entry = match &**event {
         Event::PrivMsg(data) => Some(NewChatEvent {
@@ -183,14 +183,14 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
 
     if let Some(db_entry) = db_entry {
         let ctx = ctx.clone();
-        blocking::run(move || {
+        task::spawn_blocking(move || {
             let conn = &mut *ctx.redis_pool.get()?;
             redis::pipe()
                 .rpush("cb:persist_event_queue", &db_entry)
                 .query(conn)
                 .map_err(Into::into)
         })
-        .await
+        .await?
     } else {
         Ok(())
     }
@@ -199,7 +199,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
 /// Get all queued log events from redis and save them to the database in a batch
 pub async fn persist_event_queue(ctx: &DbContext) -> Result<(), Error> {
     let ctx = ctx.clone();
-    blocking::run(move || {
+    task::spawn_blocking(move || {
         let pg_conn = &*ctx.db_pool.get()?;
         let redis_conn = &mut *ctx.redis_pool.get()?;
         let (queued_events, _) = redis::pipe()
@@ -212,7 +212,7 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<(), Error> {
             .execute(pg_conn)?;
         Ok(())
     })
-    .await
+    .await?
 }
 
 #[derive(FromSqlRow, AsExpression, Debug, Serialize, Deserialize, PartialEq)]

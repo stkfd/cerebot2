@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[macro_use]
 extern crate log;
 
@@ -19,7 +21,7 @@ mod handlers;
 mod schema;
 mod state;
 
-#[tokio::main(multi_thread)]
+#[tokio::main(threaded_scheduler)]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let mut bot = Cerebot::create(CerebotConfig::load()?)?;

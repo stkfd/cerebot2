@@ -11,8 +11,8 @@ use parking_lot::RwLock;
 use tmi_rs::event::Event;
 use tmi_rs::ClientMessage;
 
-use crate::cerebot::SharedBotContext;
 use crate::error::Error;
+use crate::state::BotContext;
 
 #[derive(Default)]
 pub struct EventDispatch {
@@ -46,7 +46,7 @@ impl<'a> EventDispatch {
     pub async fn dispatch(
         &self,
         evt: &Arc<Event<String>>,
-        context: &SharedBotContext,
+        context: &BotContext,
     ) -> Result<(), Error> {
         let event_groups = self.event_groups.read();
         let mut futures = stream::iter(event_groups.values())
@@ -67,7 +67,7 @@ impl<'a> EventDispatch {
 }
 
 pub trait EventHandler: Send + Sync {
-    fn init(ctx: &SharedBotContext) -> Self
+    fn create(ctx: &BotContext) -> Pin<Box<dyn Future<Output = Self>>>
     where
         Self: Sized;
 
@@ -122,11 +122,7 @@ struct EventHandlerGroup {
 }
 
 impl EventHandlerGroup {
-    async fn execute(
-        &self,
-        evt: &Arc<Event<String>>,
-        context: &SharedBotContext,
-    ) -> Result<(), Error> {
+    async fn execute(&self, evt: &Arc<Event<String>>, context: &BotContext) -> Result<(), Error> {
         let handlers = self.handlers.read().iter().cloned().collect::<Vec<_>>();
         for handler in handlers {
             match handler.run(evt)? {
@@ -191,8 +187,8 @@ pub mod matchers {
     use std::sync::Arc;
 
     use futures::future::ready;
+    use futures::Future;
     use tmi_rs::event::Event;
-    use tokio::future::Future;
 
     use crate::dispatch::EventMatcher;
 

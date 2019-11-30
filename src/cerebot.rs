@@ -5,14 +5,9 @@ use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use futures::future::{join, ready};
 use futures::{SinkExt, StreamExt};
-use r2d2::Pool;
-use r2d2_redis::RedisConnectionManager;
-use tmi_rs::event::Event;
 use tmi_rs::rate_limits::RateLimiterConfig;
-use tmi_rs::{
-    ChatSender, ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder,
-};
-use tokio::timer::Interval;
+use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
+use tokio::time;
 
 use crate::config::CerebotConfig;
 use crate::db::{create_permissions, persist_event_queue, Channel};
@@ -20,11 +15,9 @@ use crate::diesel::prelude::*;
 use crate::dispatch::matchers::MatchAll;
 use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
 use crate::error::Error;
-use crate::handlers::LoggingHandler;
+use crate::handlers::{BotStateHandler, LoggingHandler};
 use crate::schema::channels;
-use crate::state::BotState;
-use std::ops::Deref;
-use std::sync::Arc;
+use crate::state::*;
 
 pub struct Cerebot {
     chat_client: TwitchClient,
@@ -67,14 +60,7 @@ impl Cerebot {
         } = self.chat_client.connect().await?;
         info!("Twitch chat connected.");
 
-        let context = SharedBotContext(Arc::new(InnerBotContext {
-            db_context: DbContext {
-                db_pool,
-                redis_pool,
-            },
-            sender,
-            state: Default::default(),
-        }));
+        let context = BotContext::create(db_pool, redis_pool, sender).await?;
 
         // log any connection errors
         let process_errors = error_receiver.for_each(|error| {
@@ -102,8 +88,9 @@ impl Cerebot {
         let heartbeat_ctx = context.db_context.clone();
         tokio::spawn(async move {
             let ctx = heartbeat_ctx;
-            let mut interval = Interval::new_interval(Duration::from_secs(2));
-            while let Some(_) = interval.next().await {
+            let mut interval = time::interval(Duration::from_secs(2));
+            loop {
+                interval.tick().await;
                 persist_event_queue(&ctx).await.unwrap();
             }
         });
@@ -113,26 +100,15 @@ impl Cerebot {
         let dispatch = EventDispatch::default();
         dispatch
             .match_events(MatchAll())
-            .handle(Box::new(LoggingHandler::init(&context)));
+            .handle(Box::new(BotStateHandler::create(&context).await))
+            .handle(Box::new(LoggingHandler::create(&context).await));
 
         // process messages and do stuff with the data
         let process_messages = async {
             let dispatch = &dispatch;
             let context = &context;
             receiver
-                .take_while(|event| {
-                    if context.state.should_restart() {
-                        return ready(false);
-                    }
-                    match &**event {
-                        Event::Reconnect(_) => {
-                            // mark for restart on next message
-                            context.state.restart();
-                        }
-                        _ => {}
-                    }
-                    ready(true)
-                })
+                .take_while(|_| ready(context.should_restart()))
                 .for_each_concurrent(Some(10), |event| {
                     async move {
                         // run event handlers
@@ -145,7 +121,7 @@ impl Cerebot {
         };
 
         join(process_messages, process_errors).await;
-        if context.state.should_restart() {
+        if context.should_restart() {
             Ok(RunResult::Restart)
         } else {
             Ok(RunResult::Ok)
@@ -156,27 +132,4 @@ impl Cerebot {
 pub enum RunResult {
     Ok,
     Restart,
-}
-
-#[derive(Clone)]
-pub struct SharedBotContext(Arc<InnerBotContext>);
-
-impl Deref for SharedBotContext {
-    type Target = InnerBotContext;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub struct InnerBotContext {
-    pub db_context: DbContext,
-    pub sender: ChatSender,
-    pub state: BotState,
-}
-
-#[derive(Clone)]
-pub struct DbContext {
-    pub db_pool: Pool<ConnectionManager<PgConnection>>,
-    pub redis_pool: Pool<RedisConnectionManager>,
 }

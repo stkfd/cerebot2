@@ -1,7 +1,10 @@
-use r2d2_redis::redis;
-use serde::export::Formatter;
 use std::error::Error as ErrorTrait;
 use std::fmt;
+
+use r2d2_redis::redis;
+use serde::export::Formatter;
+
+use crate::handlers::CommandHandlerError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,6 +21,8 @@ pub enum Error {
     Redis(redis::RedisError),
     Tmi(tmi_rs::Error),
     UserNotFound(i32),
+    JoinError(tokio::task::JoinError),
+    CommandHandlerError(CommandHandlerError),
 }
 
 impl From<tmi_rs::Error> for Error {
@@ -41,6 +46,18 @@ impl From<r2d2::Error> for Error {
 impl From<redis::RedisError> for Error {
     fn from(err: redis::RedisError) -> Self {
         Error::Redis(err)
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(err: tokio::task::JoinError) -> Self {
+        Error::JoinError(err)
+    }
+}
+
+impl From<CommandHandlerError> for Error {
+    fn from(err: CommandHandlerError) -> Self {
+        Error::CommandHandlerError(err)
     }
 }
 
@@ -69,6 +86,8 @@ impl fmt::Display for Error {
             Error::UserNotFound(twitch_id) => {
                 write!(f, "User with twitch ID {} not found", twitch_id)
             }
+            Error::JoinError(err) => write!(f, "Unexpected tokio task join error: {}", err),
+            Error::CommandHandlerError(err) => write!(f, "Command handler error: {}", err),
         }
     }
 }

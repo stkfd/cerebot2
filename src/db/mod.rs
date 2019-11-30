@@ -1,40 +1,45 @@
-pub use channel::*;
-pub use chat_event::*;
-pub use permissions::*;
-pub use user::*;
-
-mod channel;
-mod chat_event;
-mod permissions;
-mod user;
-
+#[macro_export]
 macro_rules! impl_redis_bincode {
-    ($model: ident) => {
-        impl redis::FromRedisValue for $model {
-            fn from_redis_value(v: &redis::Value) -> Result<Self, redis::RedisError> {
-                if let redis::Value::Data(data) = v {
+    ($model: ty) => {
+        impl r2d2_redis::redis::FromRedisValue for $model {
+            fn from_redis_value(
+                v: &r2d2_redis::redis::Value,
+            ) -> Result<Self, r2d2_redis::redis::RedisError> {
+                if let r2d2_redis::redis::Value::Data(data) = v {
                     Ok(bincode::deserialize(&data).map_err(|_| {
-                        redis::RedisError::from((
-                            redis::ErrorKind::TypeError,
+                        r2d2_redis::redis::RedisError::from((
+                            r2d2_redis::redis::ErrorKind::TypeError,
                             "Deserialization failed",
                         ))
                     })?)
                 } else {
-                    Err(redis::RedisError::from((
-                        redis::ErrorKind::TypeError,
+                    Err(r2d2_redis::redis::RedisError::from((
+                        r2d2_redis::redis::ErrorKind::TypeError,
                         "Unexpected value type returned from Redis",
                     )))
                 }
             }
         }
 
-        impl redis::ToRedisArgs for &$model {
+        impl r2d2_redis::redis::ToRedisArgs for &$model {
             fn write_redis_args<W>(&self, out: &mut W)
             where
-                W: ?Sized + redis::RedisWrite,
+                W: ?Sized + r2d2_redis::redis::RedisWrite,
             {
                 out.write_arg(&bincode::serialize(self).unwrap());
             }
         }
     };
 }
+
+pub use channel::*;
+pub use chat_event::*;
+pub use commands::*;
+pub use permissions::*;
+pub use user::*;
+
+mod channel;
+mod chat_event;
+mod commands;
+mod permissions;
+mod user;

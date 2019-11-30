@@ -8,14 +8,13 @@ edition = "2018"
 
 [dependencies.tmi-rs]
 git = "https://github.com/cere42/tmi-rs.git"
-rev = "da8cb848"
+rev = "3c20d231"
 
 [dependencies]
 futures = "^0.3"
 parking_lot = "0.9.0"
 log = "0.4.8"
-tokio = "0.2.0-alpha.6"
-tokio-executor = "0.2.0-alpha.6"
+tokio = { version = "0.2.0", features = ["blocking", "rt-threaded", "time", "macros"] }
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
 env_logger = "0.7.1"
