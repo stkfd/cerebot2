@@ -83,10 +83,7 @@ impl User {
         event: &Arc<Event<String>>,
     ) -> Result<Option<User>, Error> {
         if event_has_user_info(&**event) {
-            let event = event.clone();
-            let ctx = ctx.clone();
-
-            task::spawn_blocking(move || {
+            task::block_in_place(|| {
                 let pg = &*ctx.db_pool.get()?;
                 let redis = &mut *ctx.redis_pool.get()?;
                 let user_info = event_user_info(&*event)?.unwrap();
@@ -101,7 +98,6 @@ impl User {
                     Ok(Some(Self::insert(pg, &user_info)?))
                 }
             })
-                .await?
         } else {
             Ok(None)
         }

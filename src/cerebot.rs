@@ -1,4 +1,3 @@
-use std::error::Error as ErrorTrait;
 use std::time::Duration;
 
 use diesel::r2d2::ConnectionManager;
@@ -10,14 +9,15 @@ use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConf
 use tokio::time;
 
 use crate::config::CerebotConfig;
-use crate::db::{create_permissions, persist_event_queue, Channel};
+use crate::db::{create_default_permissions, persist_event_queue, Channel};
 use crate::diesel::prelude::*;
-use crate::dispatch::matchers::MatchAll;
+use crate::dispatch::matchers::{MatchAll, MatchMessages};
 use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
 use crate::error::Error;
-use crate::handlers::{BotStateHandler, LoggingHandler};
+use crate::handlers::{BotStateHandler, CommandRouter, LoggingHandler};
 use crate::schema::channels;
 use crate::state::*;
+use crate::Result;
 
 pub struct Cerebot {
     chat_client: TwitchClient,
@@ -25,7 +25,7 @@ pub struct Cerebot {
 }
 
 impl Cerebot {
-    pub fn create(config: CerebotConfig) -> Result<Self, Error> {
+    pub fn create(config: CerebotConfig) -> Result<Self> {
         Ok(Cerebot {
             chat_client: TwitchClientConfigBuilder::default()
                 .username(config.username().to_string())
@@ -38,7 +38,7 @@ impl Cerebot {
         })
     }
 
-    pub async fn run(&mut self) -> Result<RunResult, Box<dyn ErrorTrait>> {
+    pub async fn run(&mut self) -> Result<RunResult> {
         debug!("Creating database connection pool...");
         let manager = ConnectionManager::<PgConnection>::new(self.config.db());
         let db_pool = r2d2::Pool::builder()
@@ -95,20 +95,23 @@ impl Cerebot {
             }
         });
 
-        create_permissions(&context.db_context).await?;
+        create_default_permissions(&context).await?;
 
         let dispatch = EventDispatch::default();
         dispatch
-            .match_events(MatchAll())
-            .handle(Box::new(BotStateHandler::create(&context).await))
-            .handle(Box::new(LoggingHandler::create(&context).await));
+            .match_events(MatchAll)
+            .handle(Box::new(BotStateHandler::create(&context).await?))
+            .handle(Box::new(LoggingHandler::create(&context).await?))
+            .match_events(MatchMessages)
+            .handle(Box::new(CommandRouter::create(&context).await?));
+        info!("Initialized message handlers");
 
         // process messages and do stuff with the data
         let process_messages = async {
             let dispatch = &dispatch;
             let context = &context;
             receiver
-                .take_while(|_| ready(context.should_restart()))
+                .take_while(|_| ready(!context.should_restart()))
                 .for_each_concurrent(Some(10), |event| {
                     async move {
                         // run event handlers

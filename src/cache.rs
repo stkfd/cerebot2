@@ -1,13 +1,15 @@
-use crate::error::Error;
-use r2d2_redis::redis;
 use std::time::Duration;
+
+use r2d2_redis::redis;
+
+use crate::Result;
 
 pub trait Cacheable<Id> {
     fn cache_key(&self) -> String;
     fn cache_key_from_id(id: Id) -> String;
     fn cache_life(&self) -> Duration;
 
-    fn cache_set(&self, con: &mut dyn redis::ConnectionLike) -> Result<(), Error>
+    fn cache_set(&self, con: &mut dyn redis::ConnectionLike) -> Result<()>
     where
         for<'a> &'a Self: redis::ToRedisArgs,
     {
@@ -19,7 +21,7 @@ pub trait Cacheable<Id> {
         Ok(())
     }
 
-    fn cache_get(con: &mut dyn redis::ConnectionLike, id: Id) -> Result<Self, Error>
+    fn cache_get(con: &mut dyn redis::ConnectionLike, id: Id) -> Result<Self>
     where
         Self: Sized + redis::FromRedisValue,
     {

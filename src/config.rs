@@ -1,8 +1,11 @@
-use crate::error::Error;
-use derive_builder::Builder;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{env, fs};
+
+use derive_builder::Builder;
+use serde::{Deserialize, Serialize};
+
+use crate::error::Error;
+use crate::Result;
 
 #[derive(Debug, Clone, Builder)]
 #[builder(derive(Serialize, Deserialize))]
@@ -41,7 +44,7 @@ impl CerebotConfig {
     /// - CEREBOT_AUTH_TOKEN
     /// - CEREBOT_USERNAME
     /// - DATABASE_URL
-    pub fn load() -> Result<Self, Error> {
+    pub fn load() -> Result<Self> {
         let mut config_path = None;
 
         if let Some(mut home_dir) = dirs::home_dir() {

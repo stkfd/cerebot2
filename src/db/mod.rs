@@ -1,10 +1,16 @@
+pub use channel::*;
+pub use chat_event::*;
+pub use commands::*;
+pub use permissions::*;
+pub use user::*;
+
 #[macro_export]
 macro_rules! impl_redis_bincode {
     ($model: ty) => {
         impl r2d2_redis::redis::FromRedisValue for $model {
             fn from_redis_value(
                 v: &r2d2_redis::redis::Value,
-            ) -> Result<Self, r2d2_redis::redis::RedisError> {
+            ) -> std::result::Result<Self, r2d2_redis::redis::RedisError> {
                 if let r2d2_redis::redis::Value::Data(data) = v {
                     Ok(bincode::deserialize(&data).map_err(|_| {
                         r2d2_redis::redis::RedisError::from((
@@ -31,12 +37,6 @@ macro_rules! impl_redis_bincode {
         }
     };
 }
-
-pub use channel::*;
-pub use chat_event::*;
-pub use commands::*;
-pub use permissions::*;
-pub use user::*;
 
 mod channel;
 mod chat_event;

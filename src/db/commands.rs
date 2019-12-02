@@ -1,22 +1,26 @@
+use std::ops::Deref;
 use std::time::Duration;
 
 use diesel::backend::Backend;
+use diesel::deserialize::FromSql;
 use diesel::prelude::*;
+use diesel::sql_types::Integer;
+use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn_blocking;
+use tokio::task;
 
 use crate::cache::Cacheable;
-use crate::error::Error;
-use crate::schema::*;
-use crate::state::BotContext;
 use crate::db::PermissionRequirement;
+use crate::Result;
+use crate::schema::*;
+use crate::state::{BotContext, DbContext};
 
 /// DB persisted command attributes
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
 pub struct CommandAttributes {
     pub id: i32,
-    /// name of the command (used to match calls)
-    pub name: String,
+    /// name of the command handler. Used to identify the right handler in the bot.
+    pub handler_name: String,
     /// User facing description
     pub description: Option<String>,
     /// global switch to enable/disable a command
@@ -24,59 +28,169 @@ pub struct CommandAttributes {
     /// whether the command is active by default in all channels
     pub default_active: bool,
     /// minimum time between command uses
-    pub cooldown: Option<Duration>,
+    pub cooldown: Option<DurationMillis>,
+    /// whether the command can be used in whispers
+    pub whisper_enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, FromSqlRow)]
+pub struct DurationMillis(Duration);
+
+impl Deref for DurationMillis {
+    type Target = Duration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<DB> FromSql<Integer, DB> for DurationMillis
+where
+    DB: Backend,
+    i32: FromSql<Integer, DB>,
+{
+    fn from_sql(bytes: Option<&DB::RawValue>) -> diesel::deserialize::Result<Self> {
+        let millis = i32::from_sql(bytes)?;
+        if millis >= 0 {
+            Ok(DurationMillis(Duration::from_millis(millis as u64)))
+        } else {
+            Err("Cooldown duration can't be negative".into())
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
+pub struct CommandAlias {
+    pub name: String,
+    pub command_id: i32,
+}
+
+impl CommandAlias {
+    pub async fn all(ctx: &DbContext) -> Result<Vec<CommandAlias>> {
+        task::block_in_place(|| {
+            let pg = &*ctx.db_pool.get()?;
+            command_aliases::table.load(pg).map_err(Into::into)
+        })
+    }
 }
 
 #[derive(Insertable)]
 #[table_name = "command_attributes"]
-pub struct NewCommandAttributes {
-    pub name: String,
+pub struct InsertCommandAttributes<'a> {
+    pub handler_name: &'a str,
     /// User facing description
-    pub description: Option<String>,
+    pub description: Option<&'a str>,
     /// global switch to enable/disable a command
     pub enabled: bool,
     /// whether the command is active by default in all channels
     pub default_active: bool,
     /// minimum time between command uses in milliseconds
     pub cooldown: Option<i32>,
+    /// whether the command can be used in whispers
+    pub whisper_enabled: bool,
+}
+
+fn cooldown_key(handler_name: &str, scope: &str) -> String {
+    format!("cb:cooldowns:{}:{}", handler_name, scope)
 }
 
 impl CommandAttributes {
-    pub async fn get(ctx: &BotContext, command_name: &str) -> Result<Option<Self>, Error> {
-        use crate::schema::command_attributes::dsl::*;
-
-        let ctx = ctx.db_context.clone();
-        let command_name = command_name.to_string();
-        spawn_blocking(move || {
-            let rd = &mut *ctx.redis_pool.get()?;
-            let pg = &*ctx.db_pool.get()?;
-
-            if let Ok(cached_value) = Self::cache_get(rd, &command_name) {
-                return Ok(Some(cached_value));
-            }
-
-            command_attributes
-                .filter(name.eq(command_name))
-                .first(pg)
-                .optional()
-                .map_err(Into::into)
-        })
-        .await?
+    pub async fn reset_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<()> {
+        if let Some(cooldown) = &self.cooldown {
+            let key = cooldown_key(&self.handler_name, scope);
+            task::block_in_place(|| {
+                let rd = &mut *ctx.redis_pool.get()?;
+                redis::cmd("PSETEX")
+                    .arg(key)
+                    .arg(cooldown.as_millis() as u64)
+                    .arg(true)
+                    .query(rd)?;
+                Ok(())
+            })
+        } else {
+            Ok(())
+        }
     }
 
-    pub async fn insert(ctx: &BotContext, data: NewCommandAttributes) -> Result<Self, Error> {
-        use crate::schema::command_attributes::dsl::*;
+    pub async fn check_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<bool> {
+        if self.cooldown.is_some() {
+            let key = cooldown_key(&self.handler_name, scope);
+            task::block_in_place(|| {
+                let rd = &mut *ctx.redis_pool.get()?;
+                let exists = redis::cmd("EXISTS")
+                    .arg(key)
+                    .query::<i64>(rd)? > 0;
+                Ok(!exists)
+            })
+        } else {
+            Ok(true)
+        }
+    }
 
-        let ctx = ctx.db_context.clone();
-        spawn_blocking(move || {
+    pub async fn all(ctx: &DbContext) -> Result<Vec<CommandAttributes>> {
+        task::block_in_place(|| {
             let pg = &*ctx.db_pool.get()?;
-
-            diesel::insert_into(command_attributes)
-                .values(data)
-                .get_result(pg)
-                .map_err(Into::into)
+            command_attributes::table.load(pg).map_err(Into::into)
         })
-        .await?
+    }
+
+    fn insert_blocking(
+        pg: &PgConnection,
+        data: InsertCommandAttributes<'_>,
+    ) -> Result<CommandAttributes> {
+        use crate::schema::command_attributes::dsl::*;
+        diesel::insert_into(command_attributes)
+            .values(data)
+            .get_result(pg)
+            .map_err(Into::into)
+    }
+
+    pub async fn insert(
+        ctx: &BotContext,
+        data: InsertCommandAttributes<'_>,
+    ) -> Result<CommandAttributes> {
+        task::block_in_place(|| {
+            let pg = &*ctx.db_context.db_pool.get()?;
+            Self::insert_blocking(pg, data)
+        })
+    }
+
+    pub async fn initialize(
+        ctx: &BotContext,
+        data: InsertCommandAttributes<'_>,
+        aliases: &[&str],
+    ) -> Result<()> {
+        use diesel::dsl::*;
+
+        task::block_in_place(|| {
+            let pg = &*ctx.db_context.db_pool.get()?;
+            let command_exists: bool = select(exists(
+                command_attributes::table
+                    .filter(command_attributes::handler_name.eq(&data.handler_name)),
+            ))
+            .get_result(pg)?;
+            if !command_exists {
+                info!("Setting up new command \"{}\", handler name: {}",
+                    aliases.get(0).unwrap_or_else(|| &""),
+                    &data.handler_name
+                );
+                let attributes = Self::insert_blocking(pg, data)?;
+                diesel::insert_into(command_aliases::table)
+                    .values(
+                        aliases
+                            .iter()
+                            .map(|alias| {
+                                (
+                                    command_aliases::command_id.eq(attributes.id),
+                                    command_aliases::name.eq(alias),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .execute(pg)?;
+            }
+            Ok(())
+        })
     }
 }
 
@@ -84,7 +198,7 @@ impl_redis_bincode!(CommandAttributes);
 
 impl Cacheable<&str> for CommandAttributes {
     fn cache_key(&self) -> String {
-        format!("cb:cmd:{}", &self.name)
+        format!("cb:cmd:{}", &self.handler_name)
     }
 
     fn cache_key_from_id(id: &str) -> String {
@@ -93,24 +207,6 @@ impl Cacheable<&str> for CommandAttributes {
 
     fn cache_life(&self) -> Duration {
         Duration::from_secs(600)
-    }
-}
-
-impl<Db: Backend, St> Queryable<St, Db> for CommandAttributes
-where
-    (i32, String, Option<String>, bool, bool, Option<i32>): Queryable<St, Db>,
-{
-    type Row = <(i32, String, Option<String>, bool, bool, Option<i32>) as Queryable<St, Db>>::Row;
-    fn build(row: Self::Row) -> Self {
-        let row: (i32, String, Option<String>, bool, bool, Option<i32>) = Queryable::build(row);
-        Self {
-            id: row.0,
-            name: row.1,
-            description: row.2,
-            enabled: row.3,
-            default_active: row.4,
-            cooldown: row.5.map(|millis| Duration::from_millis(millis as u64)),
-        }
     }
 }
 
@@ -150,18 +246,13 @@ impl Cacheable<i32> for CommandPermissionSet {
     }
 
     fn cache_life(&self) -> Duration {
-        Duration::from_secs(3600)
+        Duration::from_secs(5 * 60)
     }
 }
 
 impl CommandPermission {
-    pub async fn get_by_command(
-        ctx: &BotContext,
-        command_id: i32,
-    ) -> Result<CommandPermissionSet, Error> {
-        let ctx = ctx.clone();
-
-        spawn_blocking(move || {
+    pub async fn get_by_command(ctx: &BotContext, command_id: i32) -> Result<CommandPermissionSet> {
+        task::block_in_place(|| {
             let rd = &mut *ctx.db_context.redis_pool.get()?;
             let pg = &*ctx.db_context.db_pool.get()?;
             CommandPermissionSet::cache_get(rd, command_id).or_else(|_| {
@@ -173,9 +264,7 @@ impl CommandPermission {
 
                 // resolve loaded permission IDs using the tree of permissions in
                 // the bot context
-                let resolved_requirement = ctx.permissions
-                    .read()
-                    .get_requirement(load_result)?;
+                let resolved_requirement = ctx.permissions.read().get_requirement(load_result)?;
 
                 let set = CommandPermissionSet {
                     command_id,
@@ -186,7 +275,6 @@ impl CommandPermission {
                 Ok(set)
             })
         })
-        .await?
     }
 }
 
@@ -206,13 +294,12 @@ impl ChannelCommandConfig {
         ctx: &BotContext,
         channel_id_value: i32,
         command_id_value: i32,
-    ) -> Result<Option<Self>, Error> {
+    ) -> Result<Option<Self>> {
         use crate::schema::channel_command_config::dsl::*;
 
-        let ctx = ctx.db_context.clone();
-        spawn_blocking(move || {
-            let rd = &mut *ctx.redis_pool.get()?;
-            let pg = &*ctx.db_pool.get()?;
+        task::block_in_place(|| {
+            let rd = &mut *ctx.db_context.redis_pool.get()?;
+            let pg = &*ctx.db_context.db_pool.get()?;
 
             if let Ok(cached_value) = Self::cache_get(rd, (channel_id_value, command_id_value)) {
                 return Ok(Some(cached_value));
@@ -223,10 +310,11 @@ impl ChannelCommandConfig {
                 .first::<ChannelCommandConfig>(pg)
                 .optional()?;
 
-            if let Some(ref config) = config { config.cache_set(rd)?; }
+            if let Some(ref config) = config {
+                config.cache_set(rd)?;
+            }
             Ok(config)
         })
-        .await?
     }
 }
 
@@ -246,6 +334,7 @@ impl Cacheable<(i32, i32)> for ChannelCommandConfig {
     }
 }
 
+#[allow(clippy::type_complexity)]
 impl<Db: Backend, St> Queryable<St, Db> for ChannelCommandConfig
 where
     (i32, i32, Option<bool>, Option<i32>): Queryable<St, Db>,

@@ -2,8 +2,6 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::db::{Channel, PermissionStore};
-use crate::error::Error;
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use fnv::FnvHashMap;
@@ -11,6 +9,9 @@ use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
 use tmi_rs::ChatSender;
+
+use crate::db::{Channel, PermissionStore};
+use crate::Result;
 
 #[derive(Clone)]
 pub struct BotContext(Arc<InnerBotContext>);
@@ -55,7 +56,7 @@ impl BotContext {
         db_pool: Pool<ConnectionManager<PgConnection>>,
         redis_pool: Pool<RedisConnectionManager>,
         sender: ChatSender,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         let db_context = DbContext {
             db_pool,
             redis_pool,
@@ -65,7 +66,7 @@ impl BotContext {
             db_context,
             sender,
             state: Default::default(),
-            permissions
+            permissions,
         })))
     }
 

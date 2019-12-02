@@ -38,13 +38,21 @@ table! {
 }
 
 table! {
+    command_aliases (name) {
+        name -> Text,
+        command_id -> Int4,
+    }
+}
+
+table! {
     command_attributes (id) {
         id -> Int4,
-        name -> Text,
+        handler_name -> Text,
         description -> Nullable<Text>,
         enabled -> Bool,
         default_active -> Bool,
         cooldown -> Nullable<Int4>,
+        whisper_enabled -> Bool,
     }
 }
 
@@ -102,6 +110,7 @@ joinable!(channel_command_config -> channels (channel_id));
 joinable!(channel_command_config -> command_attributes (command_id));
 joinable!(chat_events -> channels (channel_id));
 joinable!(chat_events -> users (sender_user_id));
+joinable!(command_aliases -> command_attributes (command_id));
 joinable!(command_permissions -> command_attributes (command_id));
 joinable!(command_permissions -> permissions (permission_id));
 joinable!(user_permissions -> permissions (permission_id));
@@ -111,6 +120,7 @@ allow_tables_to_appear_in_same_query!(
     channel_command_config,
     channels,
     chat_events,
+    command_aliases,
     command_attributes,
     command_permissions,
     implied_permissions,

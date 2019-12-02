@@ -20,10 +20,10 @@ use tmi_rs::irc_constants::RPL_ENDOFMOTD;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::db::{get_channel, User};
-use crate::error::Error;
+use crate::db::{Channel, User};
 use crate::schema::chat_events;
 use crate::state::DbContext;
+use crate::Result;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChatEventType {
@@ -62,36 +62,11 @@ pub struct NewChatEvent {
     pub received_at: DateTime<FixedOffset>,
 }
 
-impl redis::FromRedisValue for NewChatEvent {
-    fn from_redis_value(v: &redis::Value) -> Result<Self, redis::RedisError> {
-        if let redis::Value::Data(data) = v {
-            Ok(
-                bincode::deserialize::<'_, NewChatEvent>(&data).map_err(|_| {
-                    redis::RedisError::from((redis::ErrorKind::TypeError, "Deserialization failed"))
-                })?,
-            )
-        } else {
-            Err(redis::RedisError::from((
-                redis::ErrorKind::TypeError,
-                "Unexpected value type returned from Redis",
-            )))
-        }
-    }
-}
-
-impl redis::ToRedisArgs for &NewChatEvent {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + redis::RedisWrite,
-    {
-        out.write_arg(&bincode::serialize(*self).unwrap());
-    }
-}
+impl_redis_bincode!(NewChatEvent);
 
 /// Convert any chat event into a db entry and save the db entry in the log queue, to
 /// be persisted into the database at a later time
-pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<(), Error> {
-    let ctx = ctx.clone();
+pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()> {
     let user_id = User::get_or_insert(&ctx, event).await?.map(|u| u.id);
 
     let db_entry = match &**event {
@@ -99,7 +74,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Privmsg,
             twitch_message_id: Uuid::from_str(data.id()?).ok(),
             message: Some(data.message().clone()),
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -117,7 +92,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Notice,
             twitch_message_id: None,
             message: Some(data.message().clone()),
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -126,7 +101,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Usernotice,
             twitch_message_id: Uuid::from_str(data.id()?).ok(),
             message: Some(data.message().clone()),
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -135,7 +110,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Host,
             twitch_message_id: None,
             message: None,
-            channel_id: get_channel(&ctx, data.hosting_channel())
+            channel_id: Channel::get(&ctx, data.hosting_channel())
                 .await?
                 .map(|c| c.id),
             sender_user_id: user_id,
@@ -146,7 +121,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Clearchat,
             twitch_message_id: None,
             message: None,
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -155,7 +130,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Clearmsg,
             twitch_message_id: None,
             message: Some(data.message().clone()),
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -164,7 +139,7 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
             event_type: ChatEventType::Roomstate,
             twitch_message_id: None,
             message: None,
-            channel_id: get_channel(&ctx, data.channel()).await?.map(|c| c.id),
+            channel_id: Channel::get(&ctx, data.channel()).await?.map(|c| c.id),
             sender_user_id: user_id,
             tags: data.tags().clone().map(Into::into),
             received_at: chrono::Local::now().into(),
@@ -182,24 +157,21 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
     };
 
     if let Some(db_entry) = db_entry {
-        let ctx = ctx.clone();
-        task::spawn_blocking(move || {
+        task::block_in_place(|| {
             let conn = &mut *ctx.redis_pool.get()?;
             redis::pipe()
                 .rpush("cb:persist_event_queue", &db_entry)
                 .query(conn)
                 .map_err(Into::into)
         })
-        .await?
     } else {
         Ok(())
     }
 }
 
 /// Get all queued log events from redis and save them to the database in a batch
-pub async fn persist_event_queue(ctx: &DbContext) -> Result<(), Error> {
-    let ctx = ctx.clone();
-    task::spawn_blocking(move || {
+pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
+    task::block_in_place(|| {
         let pg_conn = &*ctx.db_pool.get()?;
         let redis_conn = &mut *ctx.redis_pool.get()?;
         let (queued_events, _) = redis::pipe()
@@ -212,7 +184,6 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<(), Error> {
             .execute(pg_conn)?;
         Ok(())
     })
-    .await?
 }
 
 #[derive(FromSqlRow, AsExpression, Debug, Serialize, Deserialize, PartialEq)]

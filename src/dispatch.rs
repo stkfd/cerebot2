@@ -1,18 +1,18 @@
 use std::fmt::Debug;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
 use futures::future::ready;
 use futures::stream;
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::StreamExt;
 use parking_lot::RwLock;
 use tmi_rs::event::Event;
-use tmi_rs::ClientMessage;
 
-use crate::error::Error;
+use async_trait::async_trait;
+
 use crate::state::BotContext;
+use crate::{AsyncResult, Result};
 
 #[derive(Default)]
 pub struct EventDispatch {
@@ -43,15 +43,11 @@ impl<'a> EventDispatch {
         }
     }
 
-    pub async fn dispatch(
-        &self,
-        evt: &Arc<Event<String>>,
-        context: &BotContext,
-    ) -> Result<(), Error> {
+    pub async fn dispatch(&self, evt: &Arc<Event<String>>, context: &BotContext) -> Result<()> {
         let event_groups = self.event_groups.read();
         let mut futures = stream::iter(event_groups.values())
             .filter(|group| group.matcher.match_event(&evt))
-            .map(|group| group.execute(evt, context))
+            .map(|group| group.execute(evt))
             .buffer_unordered(5);
 
         loop {
@@ -66,51 +62,23 @@ impl<'a> EventDispatch {
     }
 }
 
+#[async_trait]
 pub trait EventHandler: Send + Sync {
-    fn create(ctx: &BotContext) -> Pin<Box<dyn Future<Output = Self>>>
+    async fn create(ctx: &BotContext) -> Result<Self>
     where
         Self: Sized;
 
-    fn run(&self, event: &Arc<Event<String>>) -> Result<Response, Error>;
+    async fn run(&self, event: &Arc<Event<String>>) -> Result<()>;
 }
 
-#[allow(dead_code)]
-pub const fn ok_now() -> Result<Response, Error> {
-    Ok(Response::OkNow)
+#[inline]
+pub fn ok() -> AsyncResult<'static, ()> {
+    Box::pin(ready(Ok(())))
 }
 
-#[allow(dead_code)]
-pub fn ok_fut(
-    fut: impl Future<Output = Result<(), Error>> + Send + 'static,
-) -> Result<Response, Error> {
-    Ok(Response::OkFuture(Box::pin(fut)))
-}
-
-#[allow(dead_code)]
-pub fn respond_with(
-    stream: impl Stream<Item = Result<ClientMessage<String>, Error>> + Send + 'static,
-) -> Result<Response, Error> {
-    Ok(Response::Response(Box::pin(stream)))
-}
-
-#[allow(dead_code)]
-pub enum Response {
-    OkNow,
-    OkFuture(Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
-    Response(Pin<Box<dyn Stream<Item = Result<ClientMessage<String>, Error>> + Send>>),
-}
-
+#[async_trait]
 pub trait EventMatcher: Send + Sync {
-    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool> + Send>>;
-}
-impl<T, Fut> EventMatcher for T
-where
-    for<'x> T: Fn(&'x Arc<Event<String>>) -> Fut + Send + Sync,
-    Fut: Future<Output = bool> + 'static + Send,
-{
-    fn match_event(&self, e: &Arc<Event<String>>) -> Pin<Box<dyn Future<Output = bool> + Send>> {
-        Pin::from(Box::new(self(e)))
-    }
+    async fn match_event(&self, e: &Arc<Event<String>>) -> bool;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -122,25 +90,10 @@ struct EventHandlerGroup {
 }
 
 impl EventHandlerGroup {
-    async fn execute(&self, evt: &Arc<Event<String>>, context: &BotContext) -> Result<(), Error> {
+    async fn execute(&self, evt: &Arc<Event<String>>) -> Result<()> {
         let handlers = self.handlers.read().iter().cloned().collect::<Vec<_>>();
         for handler in handlers {
-            match handler.run(evt)? {
-                Response::Response(stream) => {
-                    stream
-                        .inspect_err(|err| error!("Error in message handler response: {}", err))
-                        .into_stream()
-                        .filter_map(|msg_result| ready(msg_result.ok()))
-                        .map(Ok)
-                        .forward(&mut context.sender.clone())
-                        .await
-                        .map_err(Error::Tmi)?;
-                }
-                Response::OkFuture(fut) => {
-                    fut.await?;
-                }
-                Response::OkNow => {}
-            }
+            handler.run(evt).await?;
         }
         Ok(())
     }
@@ -183,22 +136,32 @@ impl HandlerBuilder for (HandlerGroupId, &EventDispatch) {
 }
 
 pub mod matchers {
-    use std::pin::Pin;
     use std::sync::Arc;
 
-    use futures::future::ready;
-    use futures::Future;
     use tmi_rs::event::Event;
+
+    use async_trait::async_trait;
 
     use crate::dispatch::EventMatcher;
 
-    pub struct MatchAll();
+    /// Match all events
+    pub struct MatchAll;
+    #[async_trait]
     impl EventMatcher for MatchAll {
-        fn match_event(
-            &self,
-            _e: &Arc<Event<String>>,
-        ) -> Pin<Box<dyn Future<Output = bool> + Send>> {
-            Box::pin(ready(true))
+        async fn match_event(&self, _e: &Arc<Event<String>>) -> bool {
+            true
+        }
+    }
+
+    /// Matches only channel messages and whispers
+    pub struct MatchMessages;
+    #[async_trait]
+    impl EventMatcher for MatchMessages {
+        async fn match_event(&self, e: &Arc<Event<String>>) -> bool {
+            match &**e {
+                Event::PrivMsg(_) | Event::Whisper(_) => true,
+                _ => false
+            }
         }
     }
 }
