@@ -1,7 +1,6 @@
 use std::io::Write;
 use std::ops::Deref;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use diesel::deserialize::FromSql;
@@ -14,16 +13,17 @@ use fnv::FnvHashMap;
 use r2d2_redis::redis;
 use r2d2_redis::redis::PipelineCommands;
 use serde::{Deserialize, Serialize};
-use tmi_rs::event::tags::*;
 use tmi_rs::event::*;
+use tmi_rs::event::tags::*;
 use tmi_rs::irc_constants::RPL_ENDOFMOTD;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::db::{Channel, User};
-use crate::schema::chat_events;
-use crate::state::DbContext;
+use crate::db::Channel;
+use crate::event::CbEvent;
 use crate::Result;
+use crate::schema::chat_events;
+use crate::state::{BotContext, DbContext};
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChatEventType {
@@ -66,8 +66,9 @@ impl_redis_bincode!(NewChatEvent);
 
 /// Convert any chat event into a db entry and save the db entry in the log queue, to
 /// be persisted into the database at a later time
-pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()> {
-    let user_id = User::get_or_insert(&ctx, event).await?.map(|u| u.id);
+pub async fn log_event(ctx: &BotContext, event: &CbEvent) -> Result<()> {
+    let user_id = event.user(ctx).await?.map(|u| u.id);
+    let ctx= &ctx.db_context;
 
     let db_entry = match &**event {
         Event::PrivMsg(data) => Some(NewChatEvent {
@@ -157,13 +158,14 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
     };
 
     if let Some(db_entry) = db_entry {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let conn = &mut *ctx.redis_pool.get()?;
             redis::pipe()
                 .rpush("cb:persist_event_queue", &db_entry)
                 .query(conn)
                 .map_err(Into::into)
-        })
+        }).await?
     } else {
         Ok(())
     }
@@ -171,7 +173,8 @@ pub async fn log_event(ctx: &DbContext, event: &Arc<Event<String>>) -> Result<()
 
 /// Get all queued log events from redis and save them to the database in a batch
 pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
-    task::block_in_place(|| {
+    let ctx = ctx.clone();
+    task::spawn_blocking(move || {
         let pg_conn = &*ctx.db_pool.get()?;
         let redis_conn = &mut *ctx.redis_pool.get()?;
         let (queued_events, _) = redis::pipe()
@@ -183,7 +186,7 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
             .values(queued_events)
             .execute(pg_conn)?;
         Ok(())
-    })
+    }).await?
 }
 
 #[derive(FromSqlRow, AsExpression, Debug, Serialize, Deserialize, PartialEq)]

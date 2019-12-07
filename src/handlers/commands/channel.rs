@@ -6,14 +6,14 @@ use crate::state::BotContext;
 use crate::Result;
 
 #[derive(Debug)]
-pub struct HelloWorldCommand {
+pub struct ChannelManagerCommand {
     ctx: BotContext,
 }
 
 #[async_trait]
-impl CommandHandler for HelloWorldCommand {
+impl CommandHandler for ChannelManagerCommand {
     fn name(&self) -> &'static str {
-        "hello-world"
+        "channel"
     }
 
     async fn create(ctx: &BotContext) -> Result<Box<dyn CommandHandler>>

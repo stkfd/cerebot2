@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use tokio::task;
 
 use crate::error::Error;
+use crate::Result;
 use crate::schema::channels;
 use crate::state::DbContext;
-use crate::Result;
+use std::borrow::Cow;
 
 #[derive(Queryable, Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Channel {
@@ -24,7 +25,7 @@ pub struct Channel {
 #[table_name = "channels"]
 pub struct UpdateChannel<'a> {
     pub twitch_room_id: Option<i32>,
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
 }
 
 impl Channel {
@@ -32,7 +33,7 @@ impl Channel {
         let channel_name = channel_name.to_owned();
         let ctx = ctx.clone();
 
-        task::block_in_place(|| Self::get_blocking(&ctx, &channel_name))
+        task::spawn_blocking(move || Self::get_blocking(&ctx, &channel_name)).await?
     }
 
     fn get_blocking(ctx: &DbContext, channel_name: &str) -> Result<Option<Channel>> {
@@ -48,8 +49,12 @@ impl Channel {
         }
     }
 
-    pub async fn get_or_save(ctx: &DbContext, channel_values: UpdateChannel<'_>) -> Result<Channel> {
-        task::block_in_place(|| {
+    pub async fn get_or_save(
+        ctx: &DbContext,
+        channel_values: UpdateChannel<'static>,
+    ) -> Result<Channel> {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             if let Some(channel) = Self::get_blocking(&ctx, &channel_values.name)? {
                 Ok(channel)
             } else {
@@ -59,6 +64,6 @@ impl Channel {
                     .get_result::<Channel>(&pg_conn)?;
                 Ok(inserted_channel)
             }
-        })
+        }).await?
     }
 }

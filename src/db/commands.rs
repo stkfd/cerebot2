@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ops::Deref;
 use std::time::Duration;
 
@@ -5,15 +6,16 @@ use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::prelude::*;
 use diesel::sql_types::Integer;
+use futures::executor::block_on;
 use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
 use crate::cache::Cacheable;
 use crate::db::PermissionRequirement;
-use crate::Result;
 use crate::schema::*;
 use crate::state::{BotContext, DbContext};
+use crate::Result;
 
 /// DB persisted command attributes
 #[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
@@ -67,19 +69,21 @@ pub struct CommandAlias {
 
 impl CommandAlias {
     pub async fn all(ctx: &DbContext) -> Result<Vec<CommandAlias>> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let pg = &*ctx.db_pool.get()?;
             command_aliases::table.load(pg).map_err(Into::into)
         })
+        .await?
     }
 }
 
 #[derive(Insertable)]
 #[table_name = "command_attributes"]
 pub struct InsertCommandAttributes<'a> {
-    pub handler_name: &'a str,
+    pub handler_name: Cow<'a, str>,
     /// User facing description
-    pub description: Option<&'a str>,
+    pub description: Option<Cow<'a, str>>,
     /// global switch to enable/disable a command
     pub enabled: bool,
     /// whether the command is active by default in all channels
@@ -98,7 +102,10 @@ impl CommandAttributes {
     pub async fn reset_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<()> {
         if let Some(cooldown) = &self.cooldown {
             let key = cooldown_key(&self.handler_name, scope);
-            task::block_in_place(|| {
+            let ctx = ctx.clone();
+            let cooldown = cooldown.clone();
+
+            task::spawn_blocking(move || {
                 let rd = &mut *ctx.redis_pool.get()?;
                 redis::cmd("PSETEX")
                     .arg(key)
@@ -107,6 +114,7 @@ impl CommandAttributes {
                     .query(rd)?;
                 Ok(())
             })
+            .await?
         } else {
             Ok(())
         }
@@ -115,23 +123,25 @@ impl CommandAttributes {
     pub async fn check_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<bool> {
         if self.cooldown.is_some() {
             let key = cooldown_key(&self.handler_name, scope);
-            task::block_in_place(|| {
+            let ctx = ctx.clone();
+            task::spawn_blocking(move || {
                 let rd = &mut *ctx.redis_pool.get()?;
-                let exists = redis::cmd("EXISTS")
-                    .arg(key)
-                    .query::<i64>(rd)? > 0;
+                let exists = redis::cmd("EXISTS").arg(key).query::<i64>(rd)? > 0;
                 Ok(!exists)
             })
+            .await?
         } else {
             Ok(true)
         }
     }
 
     pub async fn all(ctx: &DbContext) -> Result<Vec<CommandAttributes>> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let pg = &*ctx.db_pool.get()?;
             command_attributes::table.load(pg).map_err(Into::into)
         })
+        .await?
     }
 
     fn insert_blocking(
@@ -147,22 +157,26 @@ impl CommandAttributes {
 
     pub async fn insert(
         ctx: &BotContext,
-        data: InsertCommandAttributes<'_>,
+        data: InsertCommandAttributes<'static>,
     ) -> Result<CommandAttributes> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let pg = &*ctx.db_context.db_pool.get()?;
             Self::insert_blocking(pg, data)
         })
+        .await?
     }
 
     pub async fn initialize(
         ctx: &BotContext,
-        data: InsertCommandAttributes<'_>,
-        aliases: &[&str],
+        data: InsertCommandAttributes<'static>,
+        aliases: Vec<Cow<'static, str>>,
     ) -> Result<()> {
         use diesel::dsl::*;
 
-        task::block_in_place(|| {
+        //let aliases = aliases.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let pg = &*ctx.db_context.db_pool.get()?;
             let command_exists: bool = select(exists(
                 command_attributes::table
@@ -170,8 +184,9 @@ impl CommandAttributes {
             ))
             .get_result(pg)?;
             if !command_exists {
-                info!("Setting up new command \"{}\", handler name: {}",
-                    aliases.get(0).unwrap_or_else(|| &""),
+                info!(
+                    "Setting up new command \"{}\", handler name: {}",
+                    aliases.get(0).map(|a| &**a).unwrap_or_else(|| ""),
                     &data.handler_name
                 );
                 let attributes = Self::insert_blocking(pg, data)?;
@@ -191,6 +206,7 @@ impl CommandAttributes {
             }
             Ok(())
         })
+        .await?
     }
 }
 
@@ -252,7 +268,8 @@ impl Cacheable<i32> for CommandPermissionSet {
 
 impl CommandPermission {
     pub async fn get_by_command(ctx: &BotContext, command_id: i32) -> Result<CommandPermissionSet> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let rd = &mut *ctx.db_context.redis_pool.get()?;
             let pg = &*ctx.db_context.db_pool.get()?;
             CommandPermissionSet::cache_get(rd, command_id).or_else(|_| {
@@ -264,7 +281,8 @@ impl CommandPermission {
 
                 // resolve loaded permission IDs using the tree of permissions in
                 // the bot context
-                let resolved_requirement = ctx.permissions.read().get_requirement(load_result)?;
+                let resolved_requirement =
+                    block_on(ctx.permissions.read()).get_requirement(load_result)?;
 
                 let set = CommandPermissionSet {
                     command_id,
@@ -275,6 +293,7 @@ impl CommandPermission {
                 Ok(set)
             })
         })
+        .await?
     }
 }
 
@@ -297,7 +316,9 @@ impl ChannelCommandConfig {
     ) -> Result<Option<Self>> {
         use crate::schema::channel_command_config::dsl::*;
 
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+
+        task::spawn_blocking(move || {
             let rd = &mut *ctx.db_context.redis_pool.get()?;
             let pg = &*ctx.db_context.db_pool.get()?;
 
@@ -315,6 +336,7 @@ impl ChannelCommandConfig {
             }
             Ok(config)
         })
+        .await?
     }
 }
 

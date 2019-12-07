@@ -1,20 +1,20 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Local, Utc};
 use diesel::prelude::*;
 use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
-use tmi_rs::event::tags::*;
 use tmi_rs::event::Event;
+use tmi_rs::event::tags::*;
 use tokio::task;
 
 use crate::cache::Cacheable;
 use crate::error::Error;
+use crate::Result;
 use crate::schema::users;
 use crate::state::DbContext;
 
-#[derive(Queryable, Serialize, Deserialize)]
+#[derive(Queryable, Serialize, Deserialize, Debug)]
 pub struct User {
     pub id: i32,
     pub twitch_user_id: i32,
@@ -28,7 +28,7 @@ pub struct User {
 
 impl_redis_bincode!(User);
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[table_name = "users"]
 pub struct NewTwitchUser<'a> {
     pub twitch_user_id: i32,
@@ -39,7 +39,7 @@ pub struct NewTwitchUser<'a> {
     pub created_at: DateTime<FixedOffset>,
 }
 
-#[derive(AsChangeset)]
+#[derive(AsChangeset, Debug)]
 #[table_name = "users"]
 pub struct UpdateTwitchUser<'a> {
     pub twitch_user_id: i32,
@@ -78,15 +78,14 @@ impl Cacheable<i32> for User {
 }
 
 impl User {
-    pub async fn get_or_insert(
-        ctx: &DbContext,
-        event: &Arc<Event<String>>,
-    ) -> Result<Option<User>, Error> {
-        if event_has_user_info(&**event) {
-            task::block_in_place(|| {
+    pub async fn get_or_insert(ctx: &DbContext, event: &Event<String>) -> Result<Option<User>> {
+        if event_has_user_info(event) {
+            let ctx = ctx.clone();
+            let event = event.clone();
+            task::spawn_blocking(move || {
                 let pg = &*ctx.db_pool.get()?;
                 let redis = &mut *ctx.redis_pool.get()?;
-                let user_info = event_user_info(&*event)?.unwrap();
+                let user_info = event_user_info(&event)?.unwrap();
 
                 if let Some(user) = Self::get_blocking(pg, redis, user_info.twitch_user_id)? {
                     if !user_info.data_matches(&user) {
@@ -97,7 +96,7 @@ impl User {
                 } else {
                     Ok(Some(Self::insert(pg, &user_info)?))
                 }
-            })
+            }).await?
         } else {
             Ok(None)
         }
@@ -107,7 +106,7 @@ impl User {
         pg: &PgConnection,
         redis: &mut dyn redis::ConnectionLike,
         twitch_id: i32,
-    ) -> Result<Option<User>, Error> {
+    ) -> Result<Option<User>> {
         if let Ok(cached) = User::cache_get(redis, twitch_id) {
             trace!("Cache hit for user {}", cached.name);
             Ok(Some(cached))
@@ -121,7 +120,7 @@ impl User {
         }
     }
 
-    fn get_no_cache(pg: &PgConnection, twitch_id: i32) -> Result<Option<User>, Error> {
+    fn get_no_cache(pg: &PgConnection, twitch_id: i32) -> Result<Option<User>> {
         let query_result = users::table
             .filter(users::twitch_user_id.eq(twitch_id))
             .first::<User>(pg);
@@ -137,7 +136,7 @@ impl User {
         conn: &PgConnection,
         redis: &mut dyn redis::ConnectionLike,
         user_info: &ChatUserInfo<'_>,
-    ) -> Result<User, Error> {
+    ) -> Result<User> {
         let user = Self::get_no_cache(conn, user_info.twitch_user_id)?
             .ok_or_else(|| Error::UserNotFound(user_info.twitch_user_id))?;
 
@@ -174,7 +173,7 @@ impl User {
         Ok(updated_user)
     }
 
-    fn insert(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User, Error> {
+    fn insert(conn: &PgConnection, user_info: &ChatUserInfo<'_>) -> Result<User> {
         diesel::insert_into(users::table)
             .values(NewTwitchUser {
                 twitch_user_id: user_info.twitch_user_id,
@@ -196,7 +195,7 @@ fn event_has_user_info(event: &Event<String>) -> bool {
     }
 }
 
-fn event_user_info(event: &Event<String>) -> Result<Option<ChatUserInfo>, Error> {
+fn event_user_info(event: &Event<String>) -> Result<Option<ChatUserInfo>> {
     Ok(Some(match event {
         Event::UserNotice(data) => ChatUserInfo {
             twitch_user_id: data.user_id()? as i32,

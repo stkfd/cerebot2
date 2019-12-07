@@ -1,20 +1,30 @@
+use std::fmt;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
+use diesel::r2d2::ConnectionManager;
 use fnv::FnvHashMap;
-use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
 use tmi_rs::ChatSender;
 
 use crate::db::{Channel, PermissionStore};
 use crate::Result;
+use crate::sync::RwLock;
 
 #[derive(Clone)]
 pub struct BotContext(Arc<InnerBotContext>);
+
+impl fmt::Debug for BotContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BotContext")
+            .field("state", &self.state)
+            .field("permissions", &self.permissions)
+            .finish()
+    }
+}
 
 impl Deref for BotContext {
     type Target = InnerBotContext;
@@ -37,6 +47,7 @@ pub struct DbContext {
     pub redis_pool: Pool<RedisConnectionManager>,
 }
 
+#[derive(Debug)]
 pub struct BotState {
     channels: RwLock<FnvHashMap<String, Arc<ChannelInfo>>>,
     restart: AtomicBool,
@@ -80,19 +91,20 @@ impl BotContext {
         self.state.restart.load(Ordering::SeqCst)
     }
 
-    pub fn get_channel(&self, name: &str) -> Option<MappedRwLockReadGuard<'_, Arc<ChannelInfo>>> {
-        let guard = self.state.channels.read();
-        RwLockReadGuard::try_map(guard, |map| map.get(name)).ok()
+    pub async fn get_channel(&self, name: &str) -> Option<Arc<ChannelInfo>> {
+        self.state.channels.read().await.get(name).cloned()
     }
 
-    pub fn update_channel(&self, channel_info: ChannelInfo) {
+    pub async fn update_channel(&self, channel_info: ChannelInfo) {
         self.state
             .channels
             .write()
+            .await
             .insert(channel_info.data.name.to_owned(), Arc::new(channel_info));
     }
 }
 
+#[derive(Debug)]
 pub struct ChannelInfo {
     /// persisted channel data from the database
     pub data: Channel,
@@ -101,10 +113,32 @@ pub struct ChannelInfo {
     pub state: Option<ChannelState>,
 }
 
+#[derive(Debug)]
 pub struct ChannelState {
     pub slow: Option<usize>,
     pub followers_only: Option<isize>,
     pub subs_only: bool,
     pub r9k: bool,
     pub emote_only: bool,
+}
+
+#[derive(Debug)]
+pub enum BotStateError {
+    MissingChannel,
+    MissingCommandAttributes(String),
+}
+
+impl std::error::Error for BotStateError {}
+
+impl fmt::Display for BotStateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BotStateError::MissingChannel => write!(f, "Channel data was unavailable"),
+            BotStateError::MissingCommandAttributes(cmd) => write!(
+                f,
+                "Command attributes for {} are missing, check command boot function",
+                cmd
+            ),
+        }
+    }
 }

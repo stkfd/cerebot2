@@ -4,7 +4,9 @@ use std::fmt;
 use r2d2_redis::redis;
 use serde::export::Formatter;
 
-use crate::handlers::CommandHandlerError;
+use crate::event::LazyFetchError;
+use crate::handlers::error::CommandError;
+use crate::state::BotStateError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -21,8 +23,10 @@ pub enum Error {
     Redis(redis::RedisError),
     Tmi(tmi_rs::Error),
     UserNotFound(i32),
-    JoinError(tokio::task::JoinError),
-    CommandHandlerError(CommandHandlerError),
+    BotState(BotStateError),
+    LazyFetch(LazyFetchError),
+    Command(CommandError),
+    Join(tokio::task::JoinError),
 }
 
 impl From<tmi_rs::Error> for Error {
@@ -49,15 +53,27 @@ impl From<redis::RedisError> for Error {
     }
 }
 
-impl From<tokio::task::JoinError> for Error {
-    fn from(err: tokio::task::JoinError) -> Self {
-        Error::JoinError(err)
+impl From<BotStateError> for Error {
+    fn from(err: BotStateError) -> Self {
+        Error::BotState(err)
     }
 }
 
-impl From<CommandHandlerError> for Error {
-    fn from(err: CommandHandlerError) -> Self {
-        Error::CommandHandlerError(err)
+impl From<CommandError> for Error {
+    fn from(err: CommandError) -> Self {
+        Error::Command(err)
+    }
+}
+
+impl From<LazyFetchError> for Error {
+    fn from(err: LazyFetchError) -> Self {
+        Error::LazyFetch(err)
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(err: tokio::task::JoinError) -> Self {
+        Error::Join(err)
     }
 }
 
@@ -86,8 +102,10 @@ impl fmt::Display for Error {
             Error::UserNotFound(twitch_id) => {
                 write!(f, "User with twitch ID {} not found", twitch_id)
             }
-            Error::JoinError(err) => write!(f, "Unexpected tokio task join error: {}", err),
-            Error::CommandHandlerError(err) => write!(f, "Command handler error: {}", err),
+            Error::BotState(err) => write!(f, "Bot state error: {}", err),
+            Error::LazyFetch(err) => write!(f, "Lazy fetch error caused by: {}", err.source()),
+            Error::Command(err) => err.fmt(f),
+            Error::Join(err) => write!(f, "Task join error: {}", err),
         }
     }
 }

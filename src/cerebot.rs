@@ -6,7 +6,7 @@ use futures::future::{join, ready};
 use futures::{SinkExt, StreamExt};
 use tmi_rs::rate_limits::RateLimiterConfig;
 use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
-use tokio::time;
+use tokio::{task, time};
 
 use crate::config::CerebotConfig;
 use crate::db::{create_default_permissions, persist_event_queue, Channel};
@@ -14,6 +14,7 @@ use crate::diesel::prelude::*;
 use crate::dispatch::matchers::{MatchAll, MatchMessages};
 use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
 use crate::error::Error;
+use crate::event::CbEvent;
 use crate::handlers::{BotStateHandler, CommandRouter, LoggingHandler};
 use crate::schema::channels;
 use crate::state::*;
@@ -60,7 +61,7 @@ impl Cerebot {
         } = self.chat_client.connect().await?;
         info!("Twitch chat connected.");
 
-        let context = BotContext::create(db_pool, redis_pool, sender).await?;
+        let context: BotContext = BotContext::create(db_pool, redis_pool, sender).await?;
 
         // log any connection errors
         let process_errors = error_receiver.for_each(|error| {
@@ -86,7 +87,7 @@ impl Cerebot {
         }
 
         let heartbeat_ctx = context.db_context.clone();
-        tokio::spawn(async move {
+        task::spawn(async move {
             let ctx = heartbeat_ctx;
             let mut interval = time::interval(Duration::from_secs(2));
             loop {
@@ -97,7 +98,7 @@ impl Cerebot {
 
         create_default_permissions(&context).await?;
 
-        let dispatch = EventDispatch::default();
+        let dispatch = EventDispatch::<CbEvent>::default();
         dispatch
             .match_events(MatchAll)
             .handle(Box::new(BotStateHandler::create(&context).await?))
@@ -107,21 +108,20 @@ impl Cerebot {
         info!("Initialized message handlers");
 
         // process messages and do stuff with the data
-        let process_messages = async {
-            let dispatch = &dispatch;
-            let context = &context;
-            receiver
-                .take_while(|_| ready(!context.should_restart()))
-                .for_each_concurrent(Some(10), |event| {
-                    async move {
-                        // run event handlers
-                        if let Err(err) = dispatch.dispatch(&event, context).await {
-                            error!("Event handler failed: {}", err)
-                        }
+        let dispatch = &dispatch;
+        let context = &context;
+        let process_messages = receiver
+            .take_while(|_| ready(!context.should_restart()))
+            .map(|event| dispatch.dispatch(CbEvent::from(event), context))
+            .buffer_unordered(10)
+            .for_each(|dispatch_result| {
+                async move {
+                    // run event handlers
+                    if let Err(err) = dispatch_result {
+                        error!("Event handler failed: {}", err)
                     }
-                })
-                .await;
-        };
+                }
+            });
 
         join(process_messages, process_errors).await;
         if context.should_restart() {

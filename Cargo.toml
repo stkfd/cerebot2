@@ -8,13 +8,12 @@ edition = "2018"
 
 [dependencies.tmi-rs]
 git = "https://github.com/cere42/tmi-rs.git"
-rev = "3c20d231"
+rev = "3ae7a7ea"
 
 [dependencies]
 futures = "^0.3"
-parking_lot = "0.9.0"
 log = "0.4.8"
-tokio = { version = "0.2.0", features = ["blocking", "rt-threaded", "time", "macros"] }
+tokio = { version = "0.2.4", features = ["blocking", "rt-threaded", "time", "macros"] }
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
 env_logger = "0.7.1"
@@ -31,6 +30,10 @@ uuid = { version = "0.6", features = ["serde"] }
 bincode = "1.2.0"
 async-trait = "0.1.19"
 lazy_static = "1.4.0"
+double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
+crossbeam-utils = "0.7.0"
+slab = "0.4.2"
+dotenv = "0.15"
 
 [[bin]]
 name = "cerebot2"

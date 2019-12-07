@@ -1,30 +1,39 @@
-use std::fmt;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
+use futures::SinkExt;
+use tmi_rs::{ChatSender, ClientMessage};
 use tmi_rs::event::*;
 
 use async_trait::async_trait;
 
-use crate::db::{ChannelCommandConfig, CommandAlias, CommandAttributes, CommandPermission, User, UserPermission, create_permissions, AddPermission, NewPermissionAttributes, PermissionState};
+use crate::{Error, Result};
+use crate::db::{
+    AddPermission, ChannelCommandConfig, CommandAlias, CommandAttributes, CommandPermission,
+    create_permissions, NewPermissionAttributes, PermissionState, UserPermission,
+};
 use crate::dispatch::EventHandler;
+use crate::event::CbEvent;
+use crate::handlers::commands::error::CommandError;
 use crate::handlers::commands::hello_world::HelloWorldCommand;
-use crate::state::{BotContext, ChannelInfo};
-use crate::Result;
+use crate::state::{BotContext, BotStateError, ChannelInfo};
 
 mod hello_world;
+pub mod error;
 
 #[async_trait]
-pub trait CommandHandler: Send + Sync {
+pub trait CommandHandler: Send + Sync + Debug {
     fn name(&self) -> &'static str;
 
-    async fn create(ctx: &BotContext) -> Result<Box<dyn CommandHandler>>
+    async fn create(bot: &BotContext) -> Result<Box<dyn CommandHandler>>
     where
         Self: Sized;
 
-    async fn run(&self, event: &Arc<Event<String>>, args: Option<&str>) -> Result<()>;
+    async fn run(&self, cmd: &CommandContext<'_>) -> Result<()>;
 }
 
+#[derive(Debug)]
 pub struct CommandRouter {
     ctx: BotContext,
     command_handlers: FnvHashMap<&'static str, Box<dyn CommandHandler>>,
@@ -35,7 +44,7 @@ pub struct CommandRouter {
 }
 
 #[async_trait]
-impl EventHandler for CommandRouter {
+impl EventHandler<CbEvent> for CommandRouter {
     async fn create(ctx: &BotContext) -> Result<Self>
     where
         Self: Sized,
@@ -71,21 +80,19 @@ impl EventHandler for CommandRouter {
         })
     }
 
-    async fn run(&self, event: &Arc<Event<String>>) -> Result<()> {
+    async fn run(&self, event: &CbEvent) -> Result<()> {
         let args;
         let command_name;
-        let channel_opt;
+        let channel_opt: Option<Arc<ChannelInfo>>;
 
         // first extract available data from the event, depending on if it's a
         // channel or whisper message
         match &**event {
             Event::PrivMsg(data) => {
-                let channel_lock = self
-                    .ctx
-                    .get_channel(data.channel())
-                    .ok_or_else(|| CommandHandlerError::MissingChannel)?;
-                channel_opt = Some((*channel_lock).clone());
-                let channel = &*channel_lock;
+                channel_opt = event.channel_info(&self.ctx).await?;
+                let channel = channel_opt.as_ref().ok_or_else(|| {
+                    Error::from(BotStateError::MissingChannel)
+                })?;
 
                 if channel.data.silent || channel.data.command_prefix.is_none() {
                     return Ok(());
@@ -136,20 +143,31 @@ impl EventHandler for CommandRouter {
             .and_then(|attributes| self.command_handlers.get(attributes.handler_name.as_str()));
 
         if let (Some(attributes), Some(handler)) = (attributes, handler) {
-            if !attributes.whisper_enabled && channel_opt.is_none() { return Ok(()) }
+            if !attributes.whisper_enabled && channel_opt.is_none() {
+                return Ok(());
+            }
 
             if let Some(ref channel) = channel_opt {
-                if !attributes.check_cooldown(&self.ctx.db_context, &channel.data.name).await? { return Ok(()) }
-                attributes.reset_cooldown(&self.ctx.db_context, &channel.data.name).await?;
+                if !attributes
+                    .check_cooldown(&self.ctx.db_context, &channel.data.name)
+                    .await?
+                {
+                    return Ok(());
+                }
+                attributes
+                    .reset_cooldown(&self.ctx.db_context, &channel.data.name)
+                    .await?;
             }
 
             self.run_command(
                 attributes,
                 &**handler,
-                event,
-                channel_opt.as_ref(),
-                command_name,
-                args.as_ref().map(|s| s.as_str()),
+                CommandContext {
+                    args: args.as_ref().map(|s| s.as_str()),
+                    event,
+                    channel: channel_opt.as_ref(),
+                    command_name
+                },
             )
             .await
         } else {
@@ -163,15 +181,12 @@ impl CommandRouter {
         &self,
         attributes: &CommandAttributes,
         command_handler: &dyn CommandHandler,
-        event: &Arc<Event<String>>,
-        channel: Option<&Arc<ChannelInfo>>,
-        used_alias: &str,
-        args: Option<&str>,
+        cmd_ctx: CommandContext<'_>,
     ) -> Result<()> {
         let ctx = &self.ctx;
 
         // load channel specific command config
-        if let Some(channel) = channel {
+        if let Some(channel) = &cmd_ctx.channel {
             let channel_config =
                 ChannelCommandConfig::get(ctx, channel.data.id, attributes.id).await?;
 
@@ -184,7 +199,7 @@ impl CommandRouter {
             }
         }
 
-        let user = User::get_or_insert(&ctx.db_context, event).await?;
+        let user = cmd_ctx.event.user(ctx).await?;
         let permission_ids = if let Some(user) = user {
             UserPermission::get_by_user_id(&ctx.db_context, user.id).await?
         } else {
@@ -200,48 +215,49 @@ impl CommandRouter {
             return Ok(());
         }
 
-        command_handler.run(&event, args).await
+        command_handler.run(&cmd_ctx).await
     }
 }
 
-struct CommandContext<'a> {
+pub struct CommandContext<'a> {
     args: Option<&'a str>,
-    event: &'a Arc<Event<String>>,
-    channel: Option<Arc<ChannelInfo>>,
+    event: &'a CbEvent,
+    channel: Option<&'a Arc<ChannelInfo>>,
     command_name: &'a str,
-    ctx: &'a BotContext,
 }
 
-#[derive(Debug)]
-pub enum CommandHandlerError {
-    MissingChannel,
-    MissingCommandAttributes(String),
-}
-
-impl std::error::Error for CommandHandlerError {}
-
-impl fmt::Display for CommandHandlerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommandHandlerError::MissingChannel => write!(f, "Channel data was unavailable"),
-            CommandHandlerError::MissingCommandAttributes(cmd) => write!(
-                f,
-                "Command attributes for {} are missing, check command boot function",
-                cmd
-            ),
+impl CommandContext<'_> {
+    pub async fn reply(&self, message: &str, out: &mut ChatSender) -> Result<()> {
+        match &**self.event {
+            Event::PrivMsg(data) => {
+                out.send(ClientMessage::message(data.channel().as_str(), message)).await?;
+            }
+            Event::Whisper(data) => {
+                let sender = data
+                    .sender()
+                    .as_ref()
+                    .ok_or_else::<Error, _>(|| CommandError::ReplyError("Whisper sender is missing from message").into())?
+                    .as_str();
+                out.send(ClientMessage::whisper(sender, message)).await?;
+            },
+            _ => return Err(CommandError::ReplyError("Can only reply to privmsg and whisper events").into())
         }
+        Ok(())
     }
 }
 
+/// Initialize permissions required for the command router
 async fn init_permissions(ctx: &BotContext) -> Result<()> {
-    create_permissions(ctx, vec![
-        AddPermission {
+    create_permissions(
+        ctx,
+        vec![AddPermission {
             attributes: NewPermissionAttributes {
                 name: "cmd:bypass_cooldowns",
                 description: Some("Bypass command cooldowns."),
-                default_state: PermissionState::Deny
+                default_state: PermissionState::Deny,
             },
-            implied_by: vec!["root"]
-        }
-    ]).await
+            implied_by: vec!["root"],
+        }],
+    )
+    .await
 }

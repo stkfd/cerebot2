@@ -4,8 +4,8 @@ use std::iter::FromIterator;
 use diesel::expression::sql_literal::sql;
 use diesel::prelude::*;
 use diesel::sql_query;
-use diesel::sql_types::{Array, Int4};
 use diesel::sql_types::Text;
+use diesel::sql_types::{Array, Int4};
 use diesel_derive_enum::DbEnum;
 use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,9 @@ use tokio::task;
 
 use lazy_static::lazy_static;
 
-use crate::Result;
 use crate::schema::{implied_permissions, permissions, user_permissions};
 use crate::state::{BotContext, DbContext};
+use crate::Result;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PermissionState {
@@ -54,7 +54,8 @@ impl PermissionStore {
     /// Loads all permissions from the database and saves them in a sort of tree structure in memory
     /// which can be used to resolve the requirements of individual commands
     pub async fn load(ctx: &DbContext) -> Result<Self> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             let pg = &ctx.db_pool.get()?;
             Ok(PermissionStore {
                 permissions: permissions::table
@@ -73,6 +74,7 @@ impl PermissionStore {
                 .collect(),
             })
         })
+        .await?
     }
 
     /// use the permission store to create a `PermissionRequirement` that can be used to check whether
@@ -108,12 +110,18 @@ impl PermissionRequirement {
     /// Check whether the given set of permissions (by IDs) is sufficient to satisfy this permission
     /// requirement
     pub fn check(&self, available_permissions: &[i32]) -> bool {
-        debug!("{:?} {:?}", self, available_permissions);
-        self.required.iter().all(|any_required| {
+        let result = self.required.iter().all(|any_required| {
             any_required
                 .iter()
                 .any(|id| available_permissions.contains(id))
-        })
+        });
+        if !result {
+            debug!(
+                "Permission check failed! Required: {:?} Actual: {:?}",
+                self.required, available_permissions
+            );
+        }
+        result
     }
 }
 
@@ -139,7 +147,8 @@ pub struct UserPermission {
 
 impl UserPermission {
     pub async fn get_by_user_id(ctx: &DbContext, user_id: i32) -> Result<Vec<i32>> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        task::spawn_blocking(move || {
             permissions::table
                 .select(permissions::id)
                 .filter(
@@ -151,6 +160,7 @@ impl UserPermission {
                 .load::<i32>(&*ctx.db_pool.get()?)
                 .map_err(Into::into)
         })
+        .await?
     }
 
     pub async fn get_named(
@@ -158,7 +168,10 @@ impl UserPermission {
         user_id: i32,
         permission: &str,
     ) -> Result<PermissionState> {
-        task::block_in_place(move || {
+        let ctx = ctx.clone();
+        let permission = permission.to_string();
+
+        task::spawn_blocking(move || {
             permissions::table
                 .select(sql::<PermissionStateMapping>(
                     "coalesce(user_permission_state, default_state)",
@@ -169,6 +182,7 @@ impl UserPermission {
                 .first::<PermissionState>(&*ctx.db_pool.get()?)
                 .map_err(Into::into)
         })
+        .await?
     }
 
     pub async fn get_named_multi(
@@ -176,7 +190,13 @@ impl UserPermission {
         user_id: i32,
         permissions: &[&str],
     ) -> Result<Vec<(String, PermissionState)>> {
-        task::block_in_place(|| {
+        let ctx = ctx.clone();
+        let permissions = permissions
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<_>>();
+
+        task::spawn_blocking(move || {
             permissions::table
                 .select(sql::<(Text, PermissionStateMapping)>(
                     "permission.name, coalesce(user_permission_state, default_state)",
@@ -187,14 +207,15 @@ impl UserPermission {
                 .load::<(String, PermissionState)>(&*ctx.db_pool.get()?)
                 .map_err(Into::into)
         })
+        .await?
     }
 }
 
 lazy_static! {
     /// A set of default permissions that should always be available to all commands
-    static ref DEFAULT_PERMISSIONS: Vec<NewPermission<'static>> = vec![
-        NewPermission {
-            rows: NewPermissionRows {
+    static ref DEFAULT_PERMISSIONS: Vec<AddPermission<'static>> = vec![
+        AddPermission {
+            attributes: NewPermissionAttributes {
                 name: "root",
                 description: Some("Super admin override"),
                 default_state: PermissionState::Deny,
@@ -204,7 +225,10 @@ lazy_static! {
     ];
 }
 
-fn create_permissions_blocking(ctx: &BotContext, new_permissions: &[AddPermission<'_>]) -> Result<()> {
+fn create_permissions_blocking(
+    ctx: &BotContext,
+    new_permissions: &[AddPermission<'_>],
+) -> Result<()> {
     let pg = &*ctx.db_context.db_pool.get()?;
     pg.transaction(|| {
         let existing = FnvHashSet::from_iter(
@@ -215,7 +239,9 @@ fn create_permissions_blocking(ctx: &BotContext, new_permissions: &[AddPermissio
         );
 
         for permission in new_permissions {
-            if existing.contains(&permission.attributes.name as &str) { continue; }
+            if existing.contains(&permission.attributes.name as &str) {
+                continue;
+            }
             info!("Adding new permission {}", &permission.attributes.name);
             let inserted = diesel::insert_into(permissions::table)
                 .values(&permission.attributes)
@@ -228,7 +254,7 @@ fn create_permissions_blocking(ctx: &BotContext, new_permissions: &[AddPermissio
                 diesel::insert_into(implied_permissions::table)
                     .values((
                         implied_permissions::implied_by_id.eq(implied_by_permission.id),
-                        implied_permissions::permission_id.eq(inserted.id)
+                        implied_permissions::permission_id.eq(inserted.id),
                     ))
                     .execute(pg)?;
             }
@@ -238,15 +264,16 @@ fn create_permissions_blocking(ctx: &BotContext, new_permissions: &[AddPermissio
     })
 }
 
-pub async fn create_permissions(ctx: &BotContext, permissions: Vec<AddPermission<'static>>) -> Result<()> {
-    task::block_in_place(|| {
-        create_permissions_blocking(&ctx, &permissions)
-    })
+pub async fn create_permissions(
+    ctx: &BotContext,
+    permissions: Vec<AddPermission<'static>>,
+) -> Result<()> {
+    let ctx = ctx.clone();
+    task::spawn_blocking(move || create_permissions_blocking(&ctx, &permissions)).await?
 }
 
 /// Create the global default permissions
 pub async fn create_default_permissions(ctx: &BotContext) -> Result<()> {
-    task::block_in_place(|| {
-        create_permissions_blocking(ctx, &*DEFAULT_PERMISSIONS)
-    })
+    let ctx = ctx.clone();
+    task::spawn_blocking(move || create_permissions_blocking(&ctx, &*DEFAULT_PERMISSIONS)).await?
 }
