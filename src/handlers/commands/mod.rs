@@ -291,6 +291,8 @@ impl CommandContext<'_> {
     }
 
     pub async fn parse_args<T: Debug + StructOpt>(&self, bot: &BotContext) -> Result<Option<T>> {
+        use structopt::clap::ErrorKind;
+
         info!("{}", self.args.replace(disallowed_input_chars, ""));
         let result = T::from_iter_safe(
             self.args
@@ -299,10 +301,9 @@ impl CommandContext<'_> {
         );
         match result {
             Ok(matches) => Ok(Some(matches)),
-            // display help if required
+            // display help or errors if required
             Err(structopt::clap::Error {
                 message,
-                kind: structopt::clap::ErrorKind::HelpDisplayed,
                 ..
             }) => {
                 let inline_help_message_rx = Lazy::new(|| Regex::new("\n\\W*").unwrap());
@@ -313,10 +314,6 @@ impl CommandContext<'_> {
                 )
                 .await?;
 
-                Ok(None)
-            }
-            Err(e) => {
-                debug!("{:?}", e);
                 Ok(None)
             }
         }
