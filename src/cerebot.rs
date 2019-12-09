@@ -112,7 +112,7 @@ impl Cerebot {
         let context = &context;
         let process_messages = receiver
             .take_while(|_| ready(!context.should_restart()))
-            .map(|event| dispatch.dispatch(CbEvent::from(event), context))
+            .map(|event| dispatch.dispatch(CbEvent::from(event)))
             .buffer_unordered(10)
             .for_each(|dispatch_result| {
                 async move {

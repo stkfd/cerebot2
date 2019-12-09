@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::db::log_event;
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
-use crate::Result;
 use crate::state::BotContext;
+use crate::Result;
 
 #[derive(Debug)]
 pub struct LoggingHandler {

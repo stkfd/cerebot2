@@ -29,11 +29,13 @@ chrono = { version = "0.4.9", features = ["serde"] }
 uuid = { version = "0.6", features = ["serde"] }
 bincode = "1.2.0"
 async-trait = "0.1.19"
-lazy_static = "1.4.0"
+once_cell = "1.2"
 double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
 crossbeam-utils = "0.7.0"
 slab = "0.4.2"
 dotenv = "0.15"
+regex = "1.3"
+structopt = "0.3"
 
 [[bin]]
 name = "cerebot2"

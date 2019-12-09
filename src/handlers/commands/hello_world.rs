@@ -20,15 +20,20 @@ impl CommandHandler for HelloWorldCommand {
     where
         Self: Sized,
     {
-        let attributes = InsertCommandAttributes {
-            handler_name: "hello-world".into(),
-            description: Some("Test command".into()),
-            enabled: true,
-            default_active: true,
-            cooldown: Some(5000),
-            whisper_enabled: true,
-        };
-        CommandAttributes::initialize(ctx, attributes, vec!["hello".into()]).await?;
+        CommandAttributes::initialize(
+            ctx,
+            InsertCommandAttributes {
+                handler_name: "hello-world".into(),
+                description: Some("Test command".into()),
+                enabled: true,
+                default_active: true,
+                cooldown: Some(5000),
+                whisper_enabled: true,
+            },
+            Vec::<String>::new(),
+            vec!["hello"],
+        )
+        .await?;
 
         Ok(Box::new(HelloWorldCommand { ctx: ctx.clone() }) as Box<dyn CommandHandler>)
     }

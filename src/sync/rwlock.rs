@@ -150,7 +150,7 @@ impl<T> RwLock<T> {
             lock: self,
             opt_key: None,
         }
-            .await
+        .await
     }
 
     /// Attempts to acquire a read lock.
@@ -272,7 +272,7 @@ impl<T> RwLock<T> {
             lock: self,
             opt_key: None,
         }
-            .await
+        .await
     }
 
     /// Attempts to acquire a write lock.

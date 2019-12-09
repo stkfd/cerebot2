@@ -13,17 +13,17 @@ use fnv::FnvHashMap;
 use r2d2_redis::redis;
 use r2d2_redis::redis::PipelineCommands;
 use serde::{Deserialize, Serialize};
-use tmi_rs::event::*;
 use tmi_rs::event::tags::*;
+use tmi_rs::event::*;
 use tmi_rs::irc_constants::RPL_ENDOFMOTD;
 use tokio::task;
 use uuid::Uuid;
 
 use crate::db::Channel;
 use crate::event::CbEvent;
-use crate::Result;
 use crate::schema::chat_events;
 use crate::state::{BotContext, DbContext};
+use crate::Result;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChatEventType {
@@ -68,7 +68,7 @@ impl_redis_bincode!(NewChatEvent);
 /// be persisted into the database at a later time
 pub async fn log_event(ctx: &BotContext, event: &CbEvent) -> Result<()> {
     let user_id = event.user(ctx).await?.map(|u| u.id);
-    let ctx= &ctx.db_context;
+    let ctx = &ctx.db_context;
 
     let db_entry = match &**event {
         Event::PrivMsg(data) => Some(NewChatEvent {
@@ -165,7 +165,8 @@ pub async fn log_event(ctx: &BotContext, event: &CbEvent) -> Result<()> {
                 .rpush("cb:persist_event_queue", &db_entry)
                 .query(conn)
                 .map_err(Into::into)
-        }).await?
+        })
+        .await?
     } else {
         Ok(())
     }
@@ -186,7 +187,8 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
             .values(queued_events)
             .execute(pg_conn)?;
         Ok(())
-    }).await?
+    })
+    .await?
 }
 
 #[derive(FromSqlRow, AsExpression, Debug, Serialize, Deserialize, PartialEq)]

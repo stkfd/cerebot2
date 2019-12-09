@@ -11,10 +11,10 @@ use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use crate::schema::{implied_permissions, permissions, user_permissions};
-use crate::state::{BotContext, DbContext};
+use crate::state::{BotContext, BotStateError, DbContext};
 use crate::Result;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub struct Permission {
 /// requirements for commands
 #[derive(Debug)]
 pub struct PermissionStore {
-    permissions: BTreeMap<i32, Permission>,
+    permissions: BTreeMap<String, Permission>,
     leaves: BTreeMap<i32, PermissionNode>,
 }
 
@@ -61,7 +61,7 @@ impl PermissionStore {
                 permissions: permissions::table
                     .load::<Permission>(pg)?
                     .into_iter()
-                    .map(|p| (p.id, p))
+                    .map(|p| (p.name.clone(), p))
                     .collect(),
                 leaves: sql_query(
                     "select permission_id, array_agg(implied_by_id) as implied_by \
@@ -96,6 +96,26 @@ impl PermissionStore {
         Ok(PermissionRequirement {
             required: requirements_vec,
         })
+    }
+
+    pub fn get_permissions<'a>(
+        &self,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Vec<&Permission>> {
+        names
+            .into_iter()
+            .map(|name| {
+                self.permissions
+                    .get(name)
+                    .ok_or_else(|| BotStateError::PermissionNotFound(name.to_string()).into())
+            })
+            .collect::<Result<Vec<_>>>()
+    }
+
+    pub fn get_permission(&self, name: &str) -> Result<&Permission> {
+        self.permissions
+            .get(name)
+            .ok_or_else(|| BotStateError::PermissionNotFound(name.to_string()).into())
     }
 }
 
@@ -211,19 +231,17 @@ impl UserPermission {
     }
 }
 
-lazy_static! {
-    /// A set of default permissions that should always be available to all commands
-    static ref DEFAULT_PERMISSIONS: Vec<AddPermission<'static>> = vec![
-        AddPermission {
-            attributes: NewPermissionAttributes {
-                name: "root",
-                description: Some("Super admin override"),
-                default_state: PermissionState::Deny,
-            },
-            implied_by: vec![]
+/// A set of default permissions that should always be available to all commands
+static DEFAULT_PERMISSIONS: Lazy<Vec<AddPermission<'static>>> = Lazy::new(|| {
+    vec![AddPermission {
+        attributes: NewPermissionAttributes {
+            name: "root",
+            description: Some("Super admin override"),
+            default_state: PermissionState::Deny,
         },
-    ];
-}
+        implied_by: vec![],
+    }]
+});
 
 fn create_permissions_blocking(
     ctx: &BotContext,

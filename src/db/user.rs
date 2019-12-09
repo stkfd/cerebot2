@@ -4,15 +4,15 @@ use chrono::{DateTime, FixedOffset, Local, Utc};
 use diesel::prelude::*;
 use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
-use tmi_rs::event::Event;
 use tmi_rs::event::tags::*;
+use tmi_rs::event::Event;
 use tokio::task;
 
 use crate::cache::Cacheable;
 use crate::error::Error;
-use crate::Result;
 use crate::schema::users;
 use crate::state::DbContext;
+use crate::Result;
 
 #[derive(Queryable, Serialize, Deserialize, Debug)]
 pub struct User {
@@ -96,7 +96,8 @@ impl User {
                 } else {
                     Ok(Some(Self::insert(pg, &user_info)?))
                 }
-            }).await?
+            })
+            .await?
         } else {
             Ok(None)
         }

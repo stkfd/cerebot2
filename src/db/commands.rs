@@ -170,7 +170,8 @@ impl CommandAttributes {
     pub async fn initialize(
         ctx: &BotContext,
         data: InsertCommandAttributes<'static>,
-        aliases: Vec<Cow<'static, str>>,
+        required_permissions: Vec<impl AsRef<str> + Send + 'static>,
+        aliases: Vec<impl AsRef<str> + Send + 'static>,
     ) -> Result<()> {
         use diesel::dsl::*;
 
@@ -186,7 +187,7 @@ impl CommandAttributes {
             if !command_exists {
                 info!(
                     "Setting up new command \"{}\", handler name: {}",
-                    aliases.get(0).map(|a| &**a).unwrap_or_else(|| ""),
+                    aliases.get(0).map(|a| a.as_ref()).unwrap_or_else(|| ""),
                     &data.handler_name
                 );
                 let attributes = Self::insert_blocking(pg, data)?;
@@ -197,7 +198,7 @@ impl CommandAttributes {
                             .map(|alias| {
                                 (
                                     command_aliases::command_id.eq(attributes.id),
-                                    command_aliases::name.eq(alias),
+                                    command_aliases::name.eq(alias.as_ref()),
                                 )
                             })
                             .collect::<Vec<_>>(),

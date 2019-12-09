@@ -1,13 +1,13 @@
-use tmi_rs::event::*;
 use tmi_rs::event::tags::*;
+use tmi_rs::event::*;
 
 use async_trait::async_trait;
 
-use crate::db::{Channel, UpdateChannel};
+use crate::db::{Channel, UpdateChannelId};
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
-use crate::Result;
 use crate::state::{BotContext, ChannelInfo, ChannelState};
+use crate::Result;
 
 #[derive(Debug)]
 pub struct BotStateHandler {
@@ -33,9 +33,9 @@ impl EventHandler<CbEvent> for BotStateHandler {
                 ctx.restart();
             }
             Event::RoomState(data) => {
-                let channel = Channel::get_or_save(
+                let channel = Channel::get_or_persist_roomstate(
                     &ctx.db_context,
-                    UpdateChannel {
+                    UpdateChannelId {
                         twitch_room_id: Some(data.room_id()? as i32),
                         name: data.channel().to_owned().into(),
                     },
@@ -50,7 +50,8 @@ impl EventHandler<CbEvent> for BotStateHandler {
                         r9k: data.r9k(),
                         emote_only: data.emote_only(),
                     }),
-                }).await;
+                })
+                .await;
             }
             Event::PrivMsg(data) => {
                 info!("{}: {}", data.sender().as_ref().unwrap(), data.message());

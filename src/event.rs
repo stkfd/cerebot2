@@ -39,7 +39,10 @@ impl CbEvent {
             .map_err(|e| e.clone().into())
     }
 
-    pub async fn channel_info<'a>(&self, ctx: &'a BotContext) -> Result<Option<Arc<ChannelInfo>>, Error> {
+    pub async fn channel_info<'a>(
+        &self,
+        ctx: &'a BotContext,
+    ) -> Result<Option<Arc<ChannelInfo>>, Error> {
         let channel = match &*self.data.event {
             Event::PrivMsg(e) => Some(e.channel()),
             Event::Join(e) => Some(e.channel()),
@@ -52,11 +55,13 @@ impl CbEvent {
             Event::RoomState(e) => Some(e.channel()),
             Event::UserNotice(e) => Some(e.channel()),
             Event::UserState(e) => Some(e.channel()),
-            _ => None
+            _ => None,
         };
 
         if let Some(channel) = channel {
-            let channel_info = ctx.get_channel(channel).await
+            let channel_info = ctx
+                .get_channel(channel)
+                .await
                 .ok_or_else::<Error, _>(|| BotStateError::MissingChannel.into())?;
             Ok(Some(channel_info))
         } else {
@@ -67,13 +72,13 @@ impl CbEvent {
 
 #[derive(Clone, Debug)]
 pub struct LazyFetchError {
-    source: Arc<Error>
+    source: Arc<Error>,
 }
 
 impl LazyFetchError {
     pub fn new(source: Error) -> Self {
         LazyFetchError {
-            source: Arc::new(source)
+            source: Arc::new(source),
         }
     }
 

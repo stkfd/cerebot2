@@ -1,18 +1,18 @@
 use std::fmt;
 use std::ops::Deref;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use diesel::PgConnection;
 use diesel::r2d2::ConnectionManager;
+use diesel::PgConnection;
 use fnv::FnvHashMap;
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
 use tmi_rs::ChatSender;
 
 use crate::db::{Channel, PermissionStore};
-use crate::Result;
 use crate::sync::RwLock;
+use crate::Result;
 
 #[derive(Clone)]
 pub struct BotContext(Arc<InnerBotContext>);
@@ -104,7 +104,7 @@ impl BotContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChannelInfo {
     /// persisted channel data from the database
     pub data: Channel,
@@ -113,7 +113,7 @@ pub struct ChannelInfo {
     pub state: Option<ChannelState>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChannelState {
     pub slow: Option<usize>,
     pub followers_only: Option<isize>,
@@ -126,6 +126,7 @@ pub struct ChannelState {
 pub enum BotStateError {
     MissingChannel,
     MissingCommandAttributes(String),
+    PermissionNotFound(String),
 }
 
 impl std::error::Error for BotStateError {}
@@ -139,6 +140,9 @@ impl fmt::Display for BotStateError {
                 "Command attributes for {} are missing, check command boot function",
                 cmd
             ),
+            BotStateError::PermissionNotFound(permission) => {
+                write!(f, "Tried to load non-existent permission: {}", permission)
+            }
         }
     }
 }

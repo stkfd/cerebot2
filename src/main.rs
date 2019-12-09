@@ -26,6 +26,7 @@ mod handlers;
 mod schema;
 mod state;
 mod sync;
+mod util;
 
 type Result<T> = StdResult<T, Error>;
 type AsyncResult<'asn, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'asn>>;

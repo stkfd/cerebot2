@@ -1,6 +1,6 @@
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use fnv::FnvHashMap;
 use futures::future::ready;
@@ -9,9 +9,9 @@ use futures::StreamExt;
 
 use async_trait::async_trait;
 
-use crate::{AsyncResult, Result};
 use crate::state::BotContext;
 use crate::sync::RwLock;
+use crate::{AsyncResult, Result};
 use futures::executor::block_on;
 
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl<'a, T: Send + Sync> EventDispatch<T> {
         }
     }
 
-    pub async fn dispatch(&self, evt: T, context: &BotContext) -> Result<()> {
+    pub async fn dispatch(&self, evt: T) -> Result<()> {
         let event_groups = self.event_groups.read().await;
         let mut futures = stream::iter(event_groups.values())
             .filter(|group| group.matcher.match_event(&evt))
@@ -101,7 +101,9 @@ struct EventHandlerGroup<T> {
 
 impl<T> EventHandlerGroup<T> {
     async fn execute(&self, evt: &T) -> Result<()> {
-        let handlers = self.handlers.read()
+        let handlers = self
+            .handlers
+            .read()
             .await
             .iter()
             .cloned()
