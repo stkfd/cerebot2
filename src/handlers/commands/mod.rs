@@ -207,12 +207,9 @@ impl CommandRouter {
 
         let command_permissions = CommandPermission::get_by_command(&ctx, attributes.id).await?;
 
-        if !cmd_ctx
-            .check_permission_requirement(ctx, command_permissions.requirements())
-            .await?
-        {
-            return Ok(());
-        }
+        cmd_ctx
+            .check_permission_requirement(ctx, command_permissions.requirements(), true)
+            .await?;
 
         command_handler.run(&cmd_ctx).await
     }
@@ -232,7 +229,7 @@ pub struct CommandContext<'a> {
 impl CommandContext<'_> {
     /// Reply to the current message. Sends a message to the channel this event originated from or a whisper reply
     /// if this event is a whisper message. Fails on all other event types.
-    pub async fn reply(&self, message: &str, out: &mut ChatSender) -> Result<()> {
+    pub async fn reply(&self, message: &str, mut out: &ChatSender) -> Result<()> {
         match &**self.event {
             Event::PrivMsg(data) => {
                 out.send(ClientMessage::message(data.channel().as_str(), message))
@@ -263,7 +260,8 @@ impl CommandContext<'_> {
         &self,
         ctx: &BotContext,
         req: &PermissionRequirement,
-    ) -> Result<bool> {
+        reply_on_error: bool,
+    ) -> Result<()> {
         let user = self.event.user(ctx).await?;
         let user_permission_ids = if let Some(user) = user {
             UserPermission::get_by_user_id(&ctx.db_context, user.id).await?
@@ -271,11 +269,26 @@ impl CommandContext<'_> {
             vec![]
         };
 
-        Ok(req.check(&user_permission_ids))
+        if !req.check(&user_permission_ids) {
+            if reply_on_error {
+                self.reply(
+                    "You don't have the permissions needed to use this command.",
+                    &ctx.sender,
+                ).await?;
+            }
+            Err(CommandError::PermissionRequired(req.clone()).into())
+        } else {
+            Ok(())
+        }
     }
 
     /// Check whether the current user has the permissions with the given names
-    pub async fn check_permissions(&self, ctx: &BotContext, names: &[&str]) -> Result<bool> {
+    pub async fn check_permissions(
+        &self,
+        ctx: &BotContext,
+        names: &[&str],
+        reply_on_error: bool,
+    ) -> Result<()> {
         let user = self.event.user(ctx).await?;
         let user_permission_ids = if let Some(user) = user {
             UserPermission::get_by_user_id(&ctx.db_context, user.id).await?
@@ -287,12 +300,20 @@ impl CommandContext<'_> {
         let permissions = permission_store.get_permissions(names.iter().map(|s| *s))?;
         let req = permission_store.get_requirement(permissions.iter().map(|p| p.id))?;
 
-        Ok(req.check(&user_permission_ids))
+        if !req.check(&user_permission_ids) {
+            if reply_on_error {
+                self.reply(
+                    "You don't have the permissions needed to use this command.",
+                    &ctx.sender,
+                ).await?;
+            }
+            Err(CommandError::PermissionRequired(req).into())
+        } else {
+            Ok(())
+        }
     }
 
     pub async fn parse_args<T: Debug + StructOpt>(&self, bot: &BotContext) -> Result<Option<T>> {
-        use structopt::clap::ErrorKind;
-
         info!("{}", self.args.replace(disallowed_input_chars, ""));
         let result = T::from_iter_safe(
             self.args
@@ -302,10 +323,7 @@ impl CommandContext<'_> {
         match result {
             Ok(matches) => Ok(Some(matches)),
             // display help or errors if required
-            Err(structopt::clap::Error {
-                message,
-                ..
-            }) => {
+            Err(structopt::clap::Error { message, .. }) => {
                 let inline_help_message_rx = Lazy::new(|| Regex::new("\n\\W*").unwrap());
 
                 self.reply(

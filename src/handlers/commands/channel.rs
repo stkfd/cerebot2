@@ -28,15 +28,19 @@ impl CommandHandler for ChannelManagerCommand {
 
     async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
         let args = cmd.parse_args::<ChannelCommandArgs>(&self.ctx).await?;
-        let sender = &mut self.ctx.sender.clone();
+        let mut sender = &self.ctx.sender;
         if let Some(args) = args {
             match args {
                 ChannelCommandArgs::Info { channel } => {
+                    cmd.check_permissions(&self.ctx, &["channels:read"], true).await?;
+
                     let channel_info = self.ctx.get_channel(&channel).await;
                     let reply = format!("{:?}", channel_info);
                     cmd.reply(&reply, sender).await?;
                 }
                 ChannelCommandArgs::Update { channel, settings } => {
+                    cmd.check_permissions(&self.ctx, &["channels:manage"], true).await?;
+
                     if let Some(channel_info) = self.ctx.get_channel(&channel).await {
                         Channel::update_settings(
                             &self.ctx,
@@ -51,6 +55,8 @@ impl CommandHandler for ChannelManagerCommand {
                     }
                 }
                 ChannelCommandArgs::New { channel, settings } => {
+                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true).await?;
+
                     Channel::create_channel(&self.ctx, settings.into_insert_data(channel.clone()))
                         .await?;
                     if let Some(channel_info) = self.ctx.get_channel(&channel).await {

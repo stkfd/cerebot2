@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies.tmi-rs]
 git = "https://github.com/cere42/tmi-rs.git"
-rev = "3ae7a7ea"
+rev = "956120af"
 
 [dependencies]
 futures = "^0.3"

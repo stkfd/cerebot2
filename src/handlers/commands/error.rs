@@ -1,9 +1,11 @@
+use crate::db::PermissionRequirement;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum CommandError {
     ReplyError(&'static str),
     ArgumentError(structopt::clap::Error),
+    PermissionRequired(PermissionRequirement),
 }
 
 impl std::error::Error for CommandError {
@@ -20,6 +22,9 @@ impl fmt::Display for CommandError {
         match self {
             CommandError::ReplyError(msg) => write!(f, "Reply error: {}", msg),
             CommandError::ArgumentError(e) => write!(f, "{}", e),
+            CommandError::PermissionRequired(req) => {
+                write!(f, "Permission requirement {:?} is not fulfilled", req)
+            }
         }
     }
 }

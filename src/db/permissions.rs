@@ -121,7 +121,7 @@ impl PermissionStore {
 
 /// Fully flattened permission requirement with a method to check whether a set of permissions is
 /// sufficient to satisfy it
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PermissionRequirement {
     required: Vec<Vec<i32>>,
 }

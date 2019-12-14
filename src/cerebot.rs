@@ -81,7 +81,7 @@ impl Cerebot {
         );
 
         // join a channel
-        let mut sender = context.sender.clone();
+        let mut sender = &context.sender;
         for channel in startup_channels {
             sender.send(ClientMessage::join(channel.name)).await?;
         }
