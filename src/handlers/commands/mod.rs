@@ -21,7 +21,7 @@ use crate::{Error, Result};
 
 mod channel;
 pub mod error;
-mod hello_world;
+mod say;
 
 #[async_trait]
 pub trait CommandHandler: Send + Sync + Debug {
@@ -51,7 +51,7 @@ impl EventHandler<CbEvent> for CommandRouter {
         Self: Sized,
     {
         let handler_vec: Vec<&(dyn Sync + Fn(_) -> _)> = vec![
-            &hello_world::HelloWorldCommand::create,
+            &say::SayCommand::create,
             &channel::ChannelManagerCommand::create,
         ];
 
@@ -274,7 +274,8 @@ impl CommandContext<'_> {
                 self.reply(
                     "You don't have the permissions needed to use this command.",
                     &ctx.sender,
-                ).await?;
+                )
+                .await?;
             }
             Err(CommandError::PermissionRequired(req.clone()).into())
         } else {
@@ -305,7 +306,8 @@ impl CommandContext<'_> {
                 self.reply(
                     "You don't have the permissions needed to use this command.",
                     &ctx.sender,
-                ).await?;
+                )
+                .await?;
             }
             Err(CommandError::PermissionRequired(req).into())
         } else {

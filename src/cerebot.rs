@@ -1,10 +1,14 @@
+use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
+use futures::channel::mpsc::UnboundedReceiver;
 use futures::future::{join, ready};
 use futures::{SinkExt, StreamExt};
-use tmi_rs::rate_limits::RateLimiterConfig;
+use tmi_rs::stream::rate_limits::RateLimiterConfig;
+use tmi_rs::stream::{ClientMessageStream, EventStream, SendStreamExt};
 use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
 use tokio::{task, time};
 
@@ -32,6 +36,7 @@ impl Cerebot {
                 .username(config.username().to_string())
                 .token(config.auth_token().to_string())
                 .rate_limiter(RateLimiterConfig::default())
+                .send_middleware(Some(Arc::new(send_middleware_setup)))
                 .build()
                 .map_err(Error::TmiConfig)?
                 .into(),
@@ -130,6 +135,13 @@ impl Cerebot {
             Ok(RunResult::Ok)
         }
     }
+}
+
+fn send_middleware_setup(
+    stream: UnboundedReceiver<ClientMessage<String>>,
+) -> Pin<Box<dyn ClientMessageStream>> {
+    let stream = stream.split_oversize(500).dedup();
+    Box::pin(stream)
 }
 
 pub enum RunResult {
