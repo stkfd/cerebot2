@@ -170,7 +170,7 @@ impl CommandAttributes {
     pub async fn initialize(
         ctx: &BotContext,
         data: InsertCommandAttributes<'static>,
-        required_permissions: Vec<impl AsRef<str> + Send + 'static>,
+        required_permission_names: Vec<impl AsRef<str> + Send + 'static>,
         aliases: Vec<impl AsRef<str> + Send + 'static>,
     ) -> Result<()> {
         use diesel::dsl::*;
@@ -190,6 +190,8 @@ impl CommandAttributes {
                     aliases.get(0).map(|a| a.as_ref()).unwrap_or_else(|| ""),
                     &data.handler_name
                 );
+
+                // insert attributes and aliases
                 let attributes = Self::insert_blocking(pg, data)?;
                 diesel::insert_into(command_aliases::table)
                     .values(
@@ -203,6 +205,21 @@ impl CommandAttributes {
                             })
                             .collect::<Vec<_>>(),
                     )
+                    .execute(pg)?;
+
+                // insert default permissions
+                let required_permission_values: Vec<_> = block_on(ctx.permissions.read())
+                    .get_permissions(required_permission_names.iter().map(|s| s.as_ref()))?
+                    .iter()
+                    .map(|permission| {
+                        (
+                            command_permissions::permission_id.eq(permission.id),
+                            command_permissions::command_id.eq(attributes.id),
+                        )
+                    })
+                    .collect();
+                diesel::insert_into(command_permissions::table)
+                    .values(required_permission_values)
                     .execute(pg)?;
             }
             Ok(())
