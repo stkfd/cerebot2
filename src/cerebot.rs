@@ -8,7 +8,7 @@ use futures::channel::mpsc::UnboundedReceiver;
 use futures::future::{join, ready};
 use futures::{SinkExt, StreamExt};
 use tmi_rs::stream::rate_limits::RateLimiterConfig;
-use tmi_rs::stream::{ClientMessageStream, EventStream, SendStreamExt};
+use tmi_rs::stream::{ClientMessageStream, SendStreamExt};
 use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
 use tokio::{task, time};
 
