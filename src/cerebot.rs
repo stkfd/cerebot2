@@ -7,13 +7,14 @@ use diesel::PgConnection;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::future::{join, ready};
 use futures::{SinkExt, StreamExt};
-use tmi_rs::stream::rate_limits::RateLimiterConfig;
 use tmi_rs::stream::{ClientMessageStream, SendStreamExt};
 use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
 use tokio::{task, time};
 
 use crate::config::CerebotConfig;
-use crate::db::{create_default_permissions, persist_event_queue, Channel};
+use crate::db::channel::Channel;
+use crate::db::chat_event::persist_event_queue;
+use crate::db::permissions::create_default_permissions;
 use crate::diesel::prelude::*;
 use crate::dispatch::matchers::{MatchAll, MatchMessages};
 use crate::dispatch::{EventDispatch, EventHandler, HandlerBuilder, MatcherBuilder};
@@ -35,8 +36,7 @@ impl Cerebot {
             chat_client: TwitchClientConfigBuilder::default()
                 .username(config.username().to_string())
                 .token(config.auth_token().to_string())
-                .rate_limiter(RateLimiterConfig::default())
-                .send_middleware(Some(Arc::new(send_middleware_setup)))
+                .send_middleware(Arc::new(send_middleware_setup))
                 .build()
                 .map_err(Error::TmiConfig)?
                 .into(),

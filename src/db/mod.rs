@@ -1,9 +1,3 @@
-pub use channel::*;
-pub use chat_event::*;
-pub use commands::*;
-pub use permissions::*;
-pub use user::*;
-
 #[macro_export]
 macro_rules! impl_redis_bincode {
     ($model: ty) => {
@@ -38,8 +32,8 @@ macro_rules! impl_redis_bincode {
     };
 }
 
-mod channel;
-mod chat_event;
-mod commands;
-mod permissions;
-mod user;
+pub mod channel;
+pub mod chat_event;
+pub mod commands;
+pub mod permissions;
+pub mod user;

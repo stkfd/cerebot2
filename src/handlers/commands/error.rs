@@ -1,5 +1,6 @@
-use crate::db::PermissionRequirement;
 use std::fmt;
+
+use crate::db::permissions::PermissionRequirement;
 
 #[derive(Debug)]
 pub enum CommandError {

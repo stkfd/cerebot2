@@ -19,7 +19,7 @@ use tmi_rs::irc_constants::RPL_ENDOFMOTD;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::db::Channel;
+use crate::db::channel::Channel;
 use crate::event::CbEvent;
 use crate::schema::chat_events;
 use crate::state::{BotContext, DbContext};

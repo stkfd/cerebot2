@@ -1,29 +1,30 @@
-use async_trait::async_trait;
+use futures::SinkExt;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
+use tmi_rs::ClientMessage;
 
-use crate::db::{
-    create_permissions, AddPermission, Channel, InsertChannel, NewPermissionAttributes,
-    PermissionState, UpdateChannelSettings,
+use async_trait::async_trait;
+
+use crate::db::channel::{Channel, InsertChannel, UpdateChannelSettings};
+use crate::db::commands::attributes::{CommandAttributes, InsertCommandAttributes};
+use crate::db::permissions::{
+    create_permissions, AddPermission, NewPermissionAttributes, PermissionState,
 };
-use crate::db::{CommandAttributes, InsertCommandAttributes};
 use crate::handlers::commands::{CommandContext, CommandHandler};
 use crate::state::BotContext;
 use crate::Result;
-use futures::SinkExt;
-use tmi_rs::ClientMessage;
 
 #[derive(Debug)]
 pub struct ChannelManagerCommand {
     ctx: BotContext,
 }
 
-const HANDLER_NAME: &str = "channel";
+const NAME: &str = "channel";
 
 #[async_trait]
 impl CommandHandler for ChannelManagerCommand {
     fn name(&self) -> &'static str {
-        HANDLER_NAME
+        NAME
     }
 
     async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
@@ -32,14 +33,16 @@ impl CommandHandler for ChannelManagerCommand {
         if let Some(args) = args {
             match args {
                 ChannelCommandArgs::Info { channel } => {
-                    cmd.check_permissions(&self.ctx, &["channels:read"], true).await?;
+                    cmd.check_permissions(&self.ctx, &["channels:read"], true)
+                        .await?;
 
                     let channel_info = self.ctx.get_channel(&channel).await;
                     let reply = format!("{:?}", channel_info);
                     cmd.reply(&reply, sender).await?;
                 }
                 ChannelCommandArgs::Update { channel, settings } => {
-                    cmd.check_permissions(&self.ctx, &["channels:manage"], true).await?;
+                    cmd.check_permissions(&self.ctx, &["channels:manage"], true)
+                        .await?;
 
                     if let Some(channel_info) = self.ctx.get_channel(&channel).await {
                         Channel::update_settings(
@@ -55,7 +58,8 @@ impl CommandHandler for ChannelManagerCommand {
                     }
                 }
                 ChannelCommandArgs::New { channel, settings } => {
-                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true).await?;
+                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
+                        .await?;
 
                     Channel::create_channel(&self.ctx, settings.into_insert_data(channel.clone()))
                         .await?;
@@ -116,7 +120,7 @@ impl CommandHandler for ChannelManagerCommand {
         CommandAttributes::initialize(
             ctx,
             InsertCommandAttributes {
-                handler_name: HANDLER_NAME.into(),
+                handler_name: NAME.into(),
                 description: Some("Manage the bot channels".into()),
                 enabled: true,
                 default_active: true,
@@ -132,7 +136,7 @@ impl CommandHandler for ChannelManagerCommand {
         CommandAttributes::initialize(
             ctx,
             InsertCommandAttributes {
-                handler_name: HANDLER_NAME.into(),
+                handler_name: NAME.into(),
                 description: Some("Join a channel".into()),
                 enabled: true,
                 default_active: true,

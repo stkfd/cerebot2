@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::db::{CommandAttributes, InsertCommandAttributes};
+use crate::db::commands::attributes::{CommandAttributes, InsertCommandAttributes};
 use crate::handlers::commands::{CommandContext, CommandHandler};
 use crate::state::BotContext;
 use crate::Result;

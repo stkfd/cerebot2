@@ -22,7 +22,7 @@ table! {
 
 table! {
     use diesel::sql_types::*;
-    use crate::db::ChatEventTypeMapping;
+    use crate::db::chat_event::ChatEventTypeMapping;
 
     chat_events (id) {
         id -> Int8,
@@ -72,7 +72,7 @@ table! {
 
 table! {
     use diesel::sql_types::*;
-    use crate::db::PermissionStateMapping;
+    use crate::db::permissions::PermissionStateMapping;
 
     permissions (id) {
         id -> Int4,
@@ -84,7 +84,7 @@ table! {
 
 table! {
     use diesel::sql_types::*;
-    use crate::db::PermissionStateMapping;
+    use crate::db::permissions::PermissionStateMapping;
 
     user_permissions (permission_id, user_id) {
         user_id -> Int4,

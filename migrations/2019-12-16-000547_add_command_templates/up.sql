@@ -1,0 +1,1 @@
+alter table command_attributes add column template text;

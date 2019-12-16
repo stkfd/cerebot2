@@ -5,7 +5,7 @@ use double_checked_cell::DoubleCheckedCell;
 use futures::TryFutureExt;
 use tmi_rs::event::*;
 
-use crate::db::User;
+use crate::db::user::User;
 use crate::error::Error;
 use crate::state::{BotContext, BotStateError, ChannelInfo};
 

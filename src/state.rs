@@ -10,7 +10,8 @@ use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
 use tmi_rs::ChatSender;
 
-use crate::db::{Channel, PermissionStore};
+use crate::db::channel::Channel;
+use crate::db::permissions::PermissionStore;
 use crate::sync::RwLock;
 use crate::Result;
 

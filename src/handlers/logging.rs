@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::db::log_event;
+use crate::db::chat_event::log_event;
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
 use crate::state::BotContext;

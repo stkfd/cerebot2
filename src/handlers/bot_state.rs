@@ -3,7 +3,7 @@ use tmi_rs::event::*;
 
 use async_trait::async_trait;
 
-use crate::db::{Channel, UpdateChannelId};
+use crate::db::channel::{Channel, UpdateChannelId};
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
 use crate::state::{BotContext, ChannelInfo, ChannelState};

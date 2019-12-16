@@ -11,7 +11,14 @@ use tmi_rs::{ChatSender, ClientMessage};
 
 use async_trait::async_trait;
 
-use crate::db::*;
+use crate::db::commands::alias::CommandAlias;
+use crate::db::commands::attributes::CommandAttributes;
+use crate::db::commands::channel_config::ChannelCommandConfig;
+use crate::db::commands::permission::CommandPermission;
+use crate::db::permissions::{
+    create_permissions, AddPermission, NewPermissionAttributes, PermissionRequirement,
+    PermissionState, UserPermission,
+};
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
 use crate::handlers::commands::error::CommandError;
@@ -22,6 +29,7 @@ use crate::{Error, Result};
 mod channel;
 pub mod error;
 mod say;
+mod templates;
 
 #[async_trait]
 pub trait CommandHandler: Send + Sync + Debug {
