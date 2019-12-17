@@ -32,7 +32,6 @@ table! {
         channel_id -> Nullable<Int4>,
         sender_user_id -> Nullable<Int4>,
         tags -> Nullable<Jsonb>,
-        sent_at -> Nullable<Timestamptz>,
         received_at -> Timestamptz,
     }
 }
@@ -47,12 +46,13 @@ table! {
 table! {
     command_attributes (id) {
         id -> Int4,
-        handler_name -> Text,
         description -> Nullable<Text>,
         enabled -> Bool,
         default_active -> Bool,
         cooldown -> Nullable<Int4>,
         whisper_enabled -> Bool,
+        handler_name -> Text,
+        template -> Nullable<Text>,
     }
 }
 
