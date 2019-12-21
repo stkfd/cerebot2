@@ -11,23 +11,23 @@ use tmi_rs::{ChatSender, ClientMessage};
 
 use async_trait::async_trait;
 
-use crate::db::commands::alias::CommandAlias;
 use crate::db::commands::attributes::CommandAttributes;
 use crate::db::commands::channel_config::ChannelCommandConfig;
 use crate::db::commands::permission::CommandPermission;
 use crate::db::permissions::{
-    create_permissions, AddPermission, NewPermissionAttributes, PermissionRequirement,
-    PermissionState, UserPermission,
+    create_permissions, AddPermission, NewPermissionAttributes, PermissionState, UserPermission,
 };
 use crate::dispatch::EventHandler;
 use crate::event::CbEvent;
 use crate::handlers::commands::error::CommandError;
+use crate::state::permission_store::PermissionRequirement;
 use crate::state::{BotContext, BotStateError, ChannelInfo};
 use crate::util::disallowed_input_chars;
 use crate::{Error, Result};
 
 mod channel;
 pub mod error;
+mod reload;
 mod say;
 mod templates;
 
@@ -46,10 +46,6 @@ pub trait CommandHandler: Send + Sync + Debug {
 pub struct CommandRouter {
     ctx: BotContext,
     command_handlers: FnvHashMap<&'static str, Box<dyn CommandHandler>>,
-    /// Map of command alias -> command_id pairs
-    aliases: FnvHashMap<String, i32>,
-    /// Map of command_id -> CommandAttributes to hold command configurations
-    commands: FnvHashMap<i32, CommandAttributes>,
 }
 
 #[async_trait]
@@ -61,6 +57,8 @@ impl EventHandler<CbEvent> for CommandRouter {
         let handler_vec: Vec<&(dyn Sync + Fn(_) -> _)> = vec![
             &say::SayCommand::create,
             &channel::ChannelManagerCommand::create,
+            &templates::TemplateCommandHandler::create,
+            &reload::ReloadCommandHandler::create,
         ];
 
         init_permissions(ctx).await?;
@@ -72,23 +70,9 @@ impl EventHandler<CbEvent> for CommandRouter {
             command_handlers.insert(handler.name(), handler);
         }
 
-        let aliases = CommandAlias::all(&ctx.db_context)
-            .await?
-            .into_iter()
-            .map(|alias| (alias.name, alias.command_id))
-            .collect();
-
-        let commands = CommandAttributes::all(&ctx.db_context)
-            .await?
-            .into_iter()
-            .map(|attr| (attr.id, attr))
-            .collect();
-
         Ok(CommandRouter {
             ctx: ctx.clone(),
             command_handlers,
-            aliases,
-            commands,
         })
     }
 
@@ -148,10 +132,8 @@ impl EventHandler<CbEvent> for CommandRouter {
             _ => return Ok(()),
         }
 
-        let attributes = self
-            .aliases
-            .get(command_name)
-            .and_then(|command_id| self.commands.get(command_id));
+        let command_store = self.ctx.commands.load();
+        let attributes = command_store.get_by_alias(command_name);
 
         let handler = attributes
             .and_then(|attributes| self.command_handlers.get(attributes.handler_name.as_str()));
@@ -174,13 +156,13 @@ impl EventHandler<CbEvent> for CommandRouter {
             }
 
             self.run_command(
-                attributes,
                 &**handler,
                 CommandContext {
                     args,
                     event,
                     channel: channel_opt.as_ref(),
                     command_name,
+                    attributes,
                 },
             )
             .await
@@ -193,7 +175,6 @@ impl EventHandler<CbEvent> for CommandRouter {
 impl CommandRouter {
     async fn run_command(
         &self,
-        attributes: &CommandAttributes,
         command_handler: &dyn CommandHandler,
         cmd_ctx: CommandContext<'_>,
     ) -> Result<()> {
@@ -202,18 +183,19 @@ impl CommandRouter {
         // load channel specific command config
         if let Some(channel) = &cmd_ctx.channel {
             let channel_config =
-                ChannelCommandConfig::get(ctx, channel.data.id, attributes.id).await?;
+                ChannelCommandConfig::get(ctx, channel.data.id, cmd_ctx.attributes.id).await?;
 
             let active_in_channel = channel_config
                 .and_then(|config| config.active)
-                .unwrap_or(attributes.default_active);
+                .unwrap_or(cmd_ctx.attributes.default_active);
 
-            if !attributes.enabled || !active_in_channel {
+            if !cmd_ctx.attributes.enabled || !active_in_channel {
                 return Ok(());
             }
         }
 
-        let command_permissions = CommandPermission::get_by_command(&ctx, attributes.id).await?;
+        let command_permissions =
+            CommandPermission::get_by_command(&ctx, cmd_ctx.attributes.id).await?;
 
         cmd_ctx
             .check_permission_requirement(ctx, command_permissions.requirements(), true)
@@ -232,6 +214,7 @@ pub struct CommandContext<'a> {
     channel: Option<&'a Arc<ChannelInfo>>,
     /// name of the command
     command_name: &'a str,
+    attributes: &'a CommandAttributes,
 }
 
 impl CommandContext<'_> {
@@ -305,8 +288,8 @@ impl CommandContext<'_> {
             vec![]
         };
 
-        let permission_store = ctx.permissions.read().await;
-        let permissions = permission_store.get_permissions(names.iter().map(|s| *s))?;
+        let permission_store = ctx.permissions.load();
+        let permissions = permission_store.get_permissions(names.iter().copied())?;
         let req = permission_store.get_requirement(permissions.iter().map(|p| p.id))?;
 
         if !req.check(&user_permission_ids) {
@@ -338,7 +321,7 @@ impl CommandContext<'_> {
 
                 self.reply(
                     &(&*inline_help_message_rx).replace_all(&message, " | "),
-                    &mut bot.sender.clone(),
+                    &bot.sender,
                 )
                 .await?;
 

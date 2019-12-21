@@ -27,6 +27,7 @@ pub enum Error {
     LazyFetch(LazyFetchError),
     Command(CommandError),
     Join(tokio::task::JoinError),
+    TemplateError(tera::Error),
 }
 
 impl From<tmi_rs::Error> for Error {
@@ -77,12 +78,19 @@ impl From<tokio::task::JoinError> for Error {
     }
 }
 
+impl From<tera::Error> for Error {
+    fn from(err: tera::Error) -> Self {
+        Error::TemplateError(err)
+    }
+}
+
 impl ErrorTrait for Error {
     fn source(&self) -> Option<&(dyn ErrorTrait + 'static)> {
         match self {
             Error::Io(_, inner) => Some(inner),
             Error::Toml(_, inner) => Some(inner),
             Error::Tmi(inner) => Some(inner),
+            Error::TemplateError(inner) => Some(inner),
             _ => None,
         }
     }
@@ -106,6 +114,7 @@ impl fmt::Display for Error {
             Error::LazyFetch(err) => write!(f, "Lazy fetch error caused by: {}", err.source()),
             Error::Command(err) => err.fmt(f),
             Error::Join(err) => write!(f, "Task join error: {}", err),
+            Error::TemplateError(e) => write!(f, "Template error: {}", e),
         }
     }
 }

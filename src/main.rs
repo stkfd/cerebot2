@@ -5,11 +5,9 @@ extern crate diesel;
 #[macro_use]
 extern crate log;
 
-use std::pin::Pin;
 use std::result::Result as StdResult;
 
 use dotenv::dotenv;
-use futures::Future;
 
 use crate::cerebot::{Cerebot, RunResult};
 use crate::config::CerebotConfig;
@@ -26,10 +24,10 @@ mod handlers;
 mod schema;
 mod state;
 mod sync;
+mod template_renderer;
 mod util;
 
 type Result<T> = StdResult<T, Error>;
-type AsyncResult<'asn, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'asn>>;
 
 fn main() {
     dotenv().ok();

@@ -1,13 +1,12 @@
 use std::time::Duration;
 
 use diesel::prelude::*;
-use futures::executor::block_on;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
 use crate::cache::Cacheable;
-use crate::db::permissions::PermissionRequirement;
 use crate::schema::*;
+use crate::state::permission_store::PermissionRequirement;
 use crate::state::BotContext;
 use crate::Result;
 
@@ -66,8 +65,7 @@ impl CommandPermission {
 
                 // resolve loaded permission IDs using the tree of permissions in
                 // the bot context
-                let resolved_requirement =
-                    block_on(ctx.permissions.read()).get_requirement(load_result)?;
+                let resolved_requirement = ctx.permissions.load().get_requirement(load_result)?;
 
                 let set = CommandPermissionSet {
                     command_id,

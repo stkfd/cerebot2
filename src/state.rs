@@ -3,17 +3,25 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use fnv::FnvHashMap;
+use futures::future::join3;
 use r2d2::Pool;
 use r2d2_redis::RedisConnectionManager;
+use serde::Serialize;
 use tmi_rs::ChatSender;
 
 use crate::db::channel::Channel;
-use crate::db::permissions::PermissionStore;
+use crate::state::command_store::CommandStore;
+use crate::state::permission_store::PermissionStore;
 use crate::sync::RwLock;
+use crate::template_renderer::TemplateRenderer;
 use crate::Result;
+
+pub mod command_store;
+pub mod permission_store;
 
 #[derive(Clone)]
 pub struct BotContext(Arc<InnerBotContext>);
@@ -39,7 +47,9 @@ pub struct InnerBotContext {
     pub db_context: DbContext,
     pub sender: ChatSender,
     pub state: BotState,
-    pub permissions: RwLock<PermissionStore>,
+    pub permissions: ArcSwap<PermissionStore>,
+    pub templates: ArcSwap<TemplateRenderer>,
+    pub commands: ArcSwap<CommandStore>,
 }
 
 #[derive(Clone)]
@@ -73,12 +83,19 @@ impl BotContext {
             db_pool,
             redis_pool,
         };
-        let permissions = RwLock::new(PermissionStore::load(&db_context).await?);
+        let (permissions, commands, templates) = join3(
+            PermissionStore::load(&db_context),
+            CommandStore::load(&db_context),
+            TemplateRenderer::create(&db_context),
+        )
+        .await;
         Ok(BotContext(Arc::new(InnerBotContext {
             db_context,
             sender,
             state: Default::default(),
-            permissions,
+            permissions: ArcSwap::from_pointee(permissions?),
+            templates: ArcSwap::from_pointee(templates?),
+            commands: ArcSwap::from_pointee(commands?),
         })))
     }
 
@@ -105,7 +122,7 @@ impl BotContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChannelInfo {
     /// persisted channel data from the database
     pub data: Channel,
@@ -114,7 +131,7 @@ pub struct ChannelInfo {
     pub state: Option<ChannelState>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChannelState {
     pub slow: Option<usize>,
     pub followers_only: Option<isize>,

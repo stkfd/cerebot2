@@ -53,6 +53,7 @@ table! {
         whisper_enabled -> Bool,
         handler_name -> Text,
         template -> Nullable<Text>,
+        template_context -> Nullable<Jsonb>,
     }
 }
 

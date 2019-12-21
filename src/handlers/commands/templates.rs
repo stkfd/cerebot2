@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 
-use crate::error::Error;
 use crate::handlers::{CommandContext, CommandHandler};
 use crate::state::BotContext;
+use crate::Result;
 
 #[derive(Debug)]
-pub struct TemplateCommandHandler {}
+pub struct TemplateCommandHandler {
+    ctx: BotContext,
+}
 
 const NAME: &str = "template";
 
@@ -15,14 +17,27 @@ impl CommandHandler for TemplateCommandHandler {
         NAME
     }
 
-    async fn run(&self, cmd: &CommandContext<'_>) -> Result<(), Error> {
-        unimplemented!()
+    async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
+        info!("template command");
+        let render_output = self
+            .ctx
+            .templates
+            .load()
+            .render(cmd.attributes.id, cmd.event, &self.ctx)
+            .await?;
+        info!("{:?}", &render_output);
+        let trimmed_output = render_output.trim();
+        if !trimmed_output.is_empty() {
+            cmd.reply(trimmed_output, &self.ctx.sender).await?;
+        }
+        Ok(())
     }
 
-    async fn create(bot: &BotContext) -> Result<Box<dyn CommandHandler>, Error>
+    async fn create(bot: &BotContext) -> Result<Box<dyn CommandHandler>>
     where
         Self: Sized,
     {
-        unimplemented!()
+        let instance = TemplateCommandHandler { ctx: bot.clone() };
+        Ok(Box::new(instance) as Box<dyn CommandHandler>)
     }
 }

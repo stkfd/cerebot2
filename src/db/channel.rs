@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -7,8 +10,6 @@ use crate::error::Error;
 use crate::schema::channels;
 use crate::state::{BotContext, ChannelInfo, DbContext};
 use crate::Result;
-use std::borrow::Cow;
-use std::sync::Arc;
 
 #[derive(Queryable, Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Channel {
@@ -33,6 +34,7 @@ pub struct UpdateChannelId<'a> {
 #[table_name = "channels"]
 pub struct UpdateChannelSettings {
     pub join_on_start: Option<bool>,
+    #[allow(clippy::option_option)]
     pub command_prefix: Option<Option<String>>,
     pub silent: Option<bool>,
 }

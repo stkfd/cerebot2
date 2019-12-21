@@ -1,5 +1,4 @@
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::Duration;
 
 use diesel::r2d2::ConnectionManager;
@@ -36,7 +35,7 @@ impl Cerebot {
             chat_client: TwitchClientConfigBuilder::default()
                 .username(config.username().to_string())
                 .token(config.auth_token().to_string())
-                .send_middleware(Arc::new(send_middleware_setup))
+                //.send_middleware(Arc::new(send_middleware_setup))
                 .build()
                 .map_err(Error::TmiConfig)?
                 .into(),

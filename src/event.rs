@@ -30,7 +30,7 @@ impl CbEvent {
             .user
             .get_or_init(async {
                 User::get_or_insert(&ctx.db_context, &self.data.event)
-                    .map_err(|e| LazyFetchError::new(e))
+                    .map_err(LazyFetchError::new)
                     .await
             })
             .await
@@ -39,10 +39,7 @@ impl CbEvent {
             .map_err(|e| e.clone().into())
     }
 
-    pub async fn channel_info<'a>(
-        &self,
-        ctx: &'a BotContext,
-    ) -> Result<Option<Arc<ChannelInfo>>, Error> {
+    pub async fn channel_info(&self, ctx: &BotContext) -> Result<Option<Arc<ChannelInfo>>, Error> {
         let channel = match &*self.data.event {
             Event::PrivMsg(e) => Some(e.channel()),
             Event::Join(e) => Some(e.channel()),

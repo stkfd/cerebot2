@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use fnv::FnvHashMap;
-use futures::future::ready;
+use futures::executor::block_on;
 use futures::stream;
 use futures::StreamExt;
 
@@ -11,8 +11,7 @@ use async_trait::async_trait;
 
 use crate::state::BotContext;
 use crate::sync::RwLock;
-use crate::{AsyncResult, Result};
-use futures::executor::block_on;
+use crate::Result;
 
 #[derive(Debug)]
 pub struct EventDispatch<T: Send + Sync> {
@@ -78,11 +77,6 @@ pub trait EventHandler<T>: Send + Sync + Debug {
         Self: Sized;
 
     async fn run(&self, event: &T) -> Result<()>;
-}
-
-#[inline]
-pub fn ok() -> AsyncResult<'static, ()> {
-    Box::pin(ready(Ok(())))
 }
 
 #[async_trait]

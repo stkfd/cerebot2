@@ -24,8 +24,8 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-mod rwlock;
-mod waker_set;
-
 pub use rwlock::*;
 pub use waker_set::*;
+
+mod rwlock;
+mod waker_set;

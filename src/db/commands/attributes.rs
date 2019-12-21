@@ -6,7 +6,6 @@ use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::prelude::*;
 use diesel::sql_types::Integer;
-use futures::executor::block_on;
 use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
 use tokio::task;
@@ -20,10 +19,10 @@ use crate::Result;
 #[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
 pub struct CommandAttributes {
     pub id: i32,
-    /// name of the command handler. Used to identify the right handler in the bot.
-    pub handler_name: String,
     /// User facing description
     pub description: Option<String>,
+    /// name of the command handler. Used to identify the right handler in the bot.
+    pub handler_name: String,
     /// global switch to enable/disable a command
     pub enabled: bool,
     /// whether the command is active by default in all channels
@@ -32,6 +31,28 @@ pub struct CommandAttributes {
     pub cooldown: Option<DurationMillis>,
     /// whether the command can be used in whispers
     pub whisper_enabled: bool,
+}
+
+pub type DefaultColumns = (
+    command_attributes::id,
+    command_attributes::description,
+    command_attributes::handler_name,
+    command_attributes::enabled,
+    command_attributes::default_active,
+    command_attributes::cooldown,
+    command_attributes::whisper_enabled,
+);
+
+impl CommandAttributes {
+    pub const COLUMNS: DefaultColumns = (
+        command_attributes::id,
+        command_attributes::description,
+        command_attributes::handler_name,
+        command_attributes::enabled,
+        command_attributes::default_active,
+        command_attributes::cooldown,
+        command_attributes::whisper_enabled,
+    );
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, FromSqlRow)]
@@ -121,7 +142,10 @@ impl CommandAttributes {
         let ctx = ctx.clone();
         task::spawn_blocking(move || {
             let pg = &*ctx.db_pool.get()?;
-            command_attributes::table.load(pg).map_err(Into::into)
+            command_attributes::table
+                .select(CommandAttributes::COLUMNS)
+                .load(pg)
+                .map_err(Into::into)
         })
         .await?
     }
@@ -133,6 +157,7 @@ impl CommandAttributes {
         use crate::schema::command_attributes::dsl::*;
         diesel::insert_into(command_attributes)
             .values(data)
+            .returning(CommandAttributes::COLUMNS)
             .get_result(pg)
             .map_err(Into::into)
     }
@@ -190,7 +215,9 @@ impl CommandAttributes {
                     .execute(pg)?;
 
                 // insert default permissions
-                let required_permission_values: Vec<_> = block_on(ctx.permissions.read())
+                let required_permission_values: Vec<_> = ctx
+                    .permissions
+                    .load()
                     .get_permissions(required_permission_names.iter().map(|s| s.as_ref()))?
                     .iter()
                     .map(|permission| {

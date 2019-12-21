@@ -8,8 +8,9 @@ edition = "2018"
 
 # Twitch chat connector
 [dependencies.tmi-rs]
-git = "https://github.com/cere42/tmi-rs.git"
-rev = "c0de71dc"
+#git = "https://github.com/cere42/tmi-rs.git"
+#rev = "c0de71dc"
+path = "../tmi-rs"
 
 [dependencies]
 futures = "^0.3"
@@ -52,8 +53,12 @@ once_cell = "1.2"
 double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
 
 # needed for RwLock implementation borrowed from async-std
+arc-swap = "0.4.4"
 crossbeam-utils = "0.7"
 slab = "0.4"
+
+# text command templating
+tera = "1"
 
 [[bin]]
 name = "cerebot2"
