@@ -130,9 +130,10 @@ static DEFAULT_PERMISSIONS: Lazy<Vec<AddPermission<'static>>> = Lazy::new(|| {
 fn create_permissions_blocking(
     ctx: &BotContext,
     new_permissions: &[AddPermission<'_>],
-) -> Result<()> {
+) -> Result<usize> {
     let pg = &*ctx.db_context.db_pool.get()?;
     pg.transaction(|| {
+        let mut added = 0;
         let existing = FnvHashSet::from_iter(
             permissions::table
                 .select(permissions::name)
@@ -148,6 +149,7 @@ fn create_permissions_blocking(
             let inserted = diesel::insert_into(permissions::table)
                 .values(&permission.attributes)
                 .get_result::<Permission>(pg)?;
+            added += 1;
 
             for implied_by in &permission.implied_by {
                 let implied_by_permission = permissions::table
@@ -162,7 +164,7 @@ fn create_permissions_blocking(
             }
         }
 
-        Ok(())
+        Ok(added)
     })
 }
 
@@ -171,11 +173,16 @@ pub async fn create_permissions(
     permissions: Vec<AddPermission<'static>>,
 ) -> Result<()> {
     let ctx = ctx.clone();
-    task::spawn_blocking(move || create_permissions_blocking(&ctx, &permissions)).await?
+    task::spawn_blocking(move || create_permissions_blocking(&ctx, &permissions)).await??;
+    Ok(())
 }
 
 /// Create the global default permissions
 pub async fn create_default_permissions(ctx: &BotContext) -> Result<()> {
-    let ctx = ctx.clone();
-    task::spawn_blocking(move || create_permissions_blocking(&ctx, &*DEFAULT_PERMISSIONS)).await?
+    let moved_ctx = ctx.clone();
+    let added = task::spawn_blocking(move || create_permissions_blocking(&moved_ctx, &*DEFAULT_PERMISSIONS)).await??;
+    if added > 0 {
+        ctx.reload_permissions().await?;
+    }
+    Ok(())
 }

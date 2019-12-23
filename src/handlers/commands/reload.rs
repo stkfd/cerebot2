@@ -1,14 +1,10 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 
 use crate::db::commands::attributes::{CommandAttributes, InsertCommandAttributes};
 use crate::handlers::{CommandContext, CommandHandler};
-use crate::state::command_store::CommandStore;
-use crate::state::permission_store::PermissionStore;
 use crate::state::BotContext;
-use crate::template_renderer::TemplateRenderer;
 use crate::Result;
+use futures::future::join3;
 
 #[derive(Debug)]
 pub struct ReloadCommandHandler {
@@ -24,15 +20,14 @@ impl CommandHandler for ReloadCommandHandler {
     }
 
     async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
-        self.ctx
-            .permissions
-            .store(Arc::new(PermissionStore::load(&self.ctx.db_context).await?));
-        self.ctx.templates.store(Arc::new(
-            TemplateRenderer::create(&self.ctx.db_context).await?,
-        ));
-        self.ctx
-            .commands
-            .store(Arc::new(CommandStore::load(&self.ctx.db_context).await?));
+        let (permissions, templates, commands) = join3(
+            self.ctx.reload_permissions(),
+            self.ctx.reload_templates(),
+            self.ctx.reload_commands()
+        ).await;
+        permissions?;
+        templates?;
+        commands?;
         cmd.reply("Reload done!", &self.ctx.sender).await?;
         Ok(())
     }

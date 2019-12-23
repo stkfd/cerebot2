@@ -120,6 +120,26 @@ impl BotContext {
             .await
             .insert(channel_info.data.name.to_owned(), Arc::new(channel_info));
     }
+
+    pub async fn reload_permissions(&self) -> Result<()> {
+        self
+            .permissions
+            .store(Arc::new(PermissionStore::load(&self.db_context).await?));
+        Ok(())
+    }
+
+    pub async fn reload_templates(&self) -> Result<()> {
+        self.templates.store(Arc::new(
+            TemplateRenderer::create(&self.db_context).await?,
+        ));
+        Ok(())
+    }
+
+    pub async fn reload_commands(&self) -> Result<()> {
+        self.commands
+            .store(Arc::new(CommandStore::load(&self.db_context).await?));
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

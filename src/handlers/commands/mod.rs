@@ -22,7 +22,7 @@ use crate::event::CbEvent;
 use crate::handlers::commands::error::CommandError;
 use crate::state::permission_store::PermissionRequirement;
 use crate::state::{BotContext, BotStateError, ChannelInfo};
-use crate::util::disallowed_input_chars;
+use crate::util::split_args;
 use crate::{Error, Result};
 
 mod channel;
@@ -139,7 +139,9 @@ impl EventHandler<CbEvent> for CommandRouter {
             .and_then(|attributes| self.command_handlers.get(attributes.handler_name.as_str()));
 
         if let (Some(attributes), Some(handler)) = (attributes, handler) {
+            debug!("Preparing command handler {}", handler.name());
             if !attributes.whisper_enabled && channel_opt.is_none() {
+                debug!("Command can't be used in whispers, ignoring");
                 return Ok(());
             }
 
@@ -148,6 +150,7 @@ impl EventHandler<CbEvent> for CommandRouter {
                     .check_cooldown(&self.ctx.db_context, &channel.data.name)
                     .await?
                 {
+                    debug!("Cooldown for {} still active", command_name);
                     return Ok(());
                 }
                 attributes
@@ -155,6 +158,7 @@ impl EventHandler<CbEvent> for CommandRouter {
                     .await?;
             }
 
+            debug!("Running command handler {}", handler.name());
             self.run_command(
                 &**handler,
                 CommandContext {
@@ -307,11 +311,8 @@ impl CommandContext<'_> {
     }
 
     pub async fn parse_args<T: Debug + StructOpt>(&self, bot: &BotContext) -> Result<Option<T>> {
-        info!("{}", self.args.replace(disallowed_input_chars, ""));
         let result = T::from_iter_safe(
-            self.args
-                .replace(disallowed_input_chars, "")
-                .split_whitespace(),
+            split_args(self.args),
         );
         match result {
             Ok(matches) => Ok(Some(matches)),

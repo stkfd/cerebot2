@@ -13,6 +13,7 @@ use crate::error::Error;
 use crate::event::CbEvent;
 use crate::state::{BotContext, DbContext};
 use crate::Result;
+use crate::util::split_args;
 
 pub struct TemplateRenderer {
     tera: Tera,
@@ -163,17 +164,23 @@ impl ContextProvider for ArgsProvider {
         &self,
         request: &JsonValue,
         event: &CbEvent,
-        bot: &BotContext,
+        _bot: &BotContext,
     ) -> Result<Option<(String, JsonValue)>> {
-        match &request["args"] {
-            JsonValue::Bool(true) => {
-                if s == "complete" {
-                    Ok(Some(("args".to_string(), to_value(todo!()).unwrap())))
-                } else if s == "array" {
-                    Ok(Some(("args".to_string(), to_value(todo!()).unwrap())))
-                }
+        if let JsonValue::String(s) = &request["args"] {
+            let args_str = event.message();
+            if s == "complete" {
+                Ok(Some(("args".to_string(), to_value(args_str).unwrap())))
+            } else if s == "array" {
+                let value = to_value(
+                    args_str.map(|args| split_args(args))
+                ).unwrap();
+                Ok(Some(("args".to_string(), value)))
+            } else {
+                Ok(None)
             }
-            _ => Ok(None),
+        }
+        else {
+            Ok(None)
         }
     }
 }
