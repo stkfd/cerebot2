@@ -145,20 +145,6 @@ impl EventHandler<CbEvent> for CommandRouter {
                 return Ok(());
             }
 
-            if let Some(ref channel) = channel_opt {
-                if !attributes
-                    .check_cooldown(&self.ctx.db_context, &channel.data.name)
-                    .await?
-                {
-                    debug!("Cooldown for {} still active", command_name);
-                    return Ok(());
-                }
-                attributes
-                    .reset_cooldown(&self.ctx.db_context, &channel.data.name)
-                    .await?;
-            }
-
-            debug!("Running command handler {}", handler.name());
             self.run_command(
                 &**handler,
                 CommandContext {
@@ -190,12 +176,28 @@ impl CommandRouter {
                 ChannelCommandConfig::get(ctx, channel.data.id, cmd_ctx.attributes.id).await?;
 
             let active_in_channel = channel_config
+                .as_ref()
                 .and_then(|config| config.active)
                 .unwrap_or(cmd_ctx.attributes.default_active);
 
             if !cmd_ctx.attributes.enabled || !active_in_channel {
                 return Ok(());
             }
+
+            let channel_cooldown = channel_config
+                .as_ref()
+                .and_then(|config| config.cooldown);
+
+            if !cmd_ctx.attributes
+                .check_cooldown(&self.ctx.db_context, &channel.data.name, channel_cooldown)
+                .await?
+            {
+                debug!("Cooldown for {} still active", cmd_ctx.command_name);
+                return Ok(());
+            }
+            cmd_ctx.attributes
+                .reset_cooldown(&self.ctx.db_context, &channel.data.name, channel_cooldown)
+                .await?;
         }
 
         let command_permissions =
@@ -205,6 +207,7 @@ impl CommandRouter {
             .check_permission_requirement(ctx, command_permissions.requirements(), true)
             .await?;
 
+        debug!("Running {} command handler", command_handler.name());
         command_handler.run(&cmd_ctx).await
     }
 }

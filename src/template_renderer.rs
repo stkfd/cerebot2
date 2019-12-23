@@ -34,6 +34,7 @@ impl TemplateRenderer {
         instance.load_templates(db_context).await?;
         instance.register_context_provider(UserProvider);
         instance.register_context_provider(ChannelInfoProvider);
+        instance.register_context_provider(ArgsProvider);
 
         Ok(instance)
     }
@@ -51,6 +52,7 @@ impl TemplateRenderer {
             self.build_context(&mut context, context_request, event, bot)
                 .await?;
         }
+        debug!("Built template context: {:?}", context);
         self.tera
             .render(&format!("{}", command_id), &context)
             .map_err(Into::into)
@@ -167,7 +169,14 @@ impl ContextProvider for ArgsProvider {
         _bot: &BotContext,
     ) -> Result<Option<(String, JsonValue)>> {
         if let JsonValue::String(s) = &request["args"] {
-            let args_str = event.message();
+            let message = event.message();
+            let args_str = message.map(|msg| {
+                if let Some(index) = msg.find(char::is_whitespace) {
+                    msg.split_at(index).1
+                } else {
+                    ""
+                }
+            });
             if s == "complete" {
                 Ok(Some(("args".to_string(), to_value(args_str).unwrap())))
             } else if s == "array" {

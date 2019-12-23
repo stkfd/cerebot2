@@ -102,8 +102,9 @@ fn cooldown_cache_key(handler_name: &str, scope: &str) -> String {
 }
 
 impl CommandAttributes {
-    pub async fn reset_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<()> {
-        if let Some(cooldown) = &self.cooldown {
+    pub async fn reset_cooldown(&self, ctx: &DbContext, scope: &str, cooldown_override: Option<Duration>) -> Result<()> {
+        let cooldown = cooldown_override.as_ref().or_else(|| self.cooldown.as_deref());
+        if let Some(cooldown) = cooldown {
             let key = cooldown_cache_key(&self.handler_name, scope);
             let ctx = ctx.clone();
             let cooldown = cooldown.clone();
@@ -123,8 +124,9 @@ impl CommandAttributes {
         }
     }
 
-    pub async fn check_cooldown(&self, ctx: &DbContext, scope: &str) -> Result<bool> {
-        if self.cooldown.is_some() {
+    pub async fn check_cooldown(&self, ctx: &DbContext, scope: &str, cooldown_override: Option<Duration>) -> Result<bool> {
+        let cooldown = cooldown_override.as_ref().or_else(|| self.cooldown.as_deref());
+        if cooldown.is_some() {
             let key = cooldown_cache_key(&self.handler_name, scope);
             let ctx = ctx.clone();
             task::spawn_blocking(move || {
