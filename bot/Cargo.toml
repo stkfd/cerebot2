@@ -1,0 +1,61 @@
+[package]
+name = "cerebot2"
+description = "Cerebot v2, a twitch chat bot. Exists partially to further development of tmi-rs, partially for its own sake."
+repository = "https://github.com/cere42/cerebot2"
+version = "0.1.0"
+authors = ["cerebellum42 <cere@fastmail.fm>"]
+edition = "2018"
+
+# Twitch chat connector
+[dependencies.tmi-rs]
+git = "https://github.com/cere42/tmi-rs.git"
+
+[dependencies]
+futures = "^0.3"
+tokio = { version = "0.2", features = ["blocking", "rt-threaded", "time", "macros"] }
+thiserror = "1.0"
+
+persistence = { path = "../persistence" }
+
+# logging
+log = "0.4.8"
+env_logger = "0.7.1"
+
+# config and command line parsing
+structopt = "0.3"
+dotenv = "0.15"
+toml = "0.5.5"
+dirs = "2.0.2"
+serde = { version = "1", features = ["derive"] }
+
+# only required for serde_json::Value to make JSONB columns work with diesel
+serde_json = "1.0"
+
+# connection pools and DB
+r2d2 = "0.8"
+r2d2_redis = "0.12"
+
+regex = "1.3"
+derive_builder = "0.9.0"
+fnv = "1.0.6"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "0.6", features = ["serde"] }
+async-trait = "0.1"
+
+# lazy init regexes
+once_cell = "1.2"
+
+# lazy initialize to load db data in each event
+async-double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
+
+# needed for RwLock implementation borrowed from async-std
+arc-swap = "0.4.4"
+crossbeam-utils = "0.7"
+slab = "0.4"
+
+# text command templating
+tera = "1"
+
+[[bin]]
+name = "cerebot2"
+path = "src/main.rs"
