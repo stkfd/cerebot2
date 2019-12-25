@@ -8,9 +8,9 @@ use futures::stream;
 use futures::StreamExt;
 
 use async_trait::async_trait;
+use util::sync::RwLock;
 
 use crate::state::BotContext;
-use crate::sync::RwLock;
 use crate::Result;
 
 #[derive(Debug)]

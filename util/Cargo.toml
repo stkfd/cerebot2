@@ -1,0 +1,10 @@
+[package]
+name = "util"
+version = "0.1.0"
+authors = ["cerebellum42 <cere@fastmail.fm>"]
+edition = "2018"
+
+[dependencies]
+# needed for RwLock implementation borrowed from async-std
+crossbeam-utils = "0.7"
+slab = "0.4"

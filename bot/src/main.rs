@@ -18,7 +18,6 @@ mod error;
 mod event;
 mod handlers;
 mod state;
-mod sync;
 mod template_renderer;
 mod util;
 

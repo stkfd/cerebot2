@@ -11,10 +11,10 @@ use tmi_rs::ChatSender;
 
 use persistence::channel::Channel;
 use persistence::DbContext;
+use util::sync::RwLock;
 
 use crate::state::command_store::CommandStore;
 use crate::state::permission_store::PermissionStore;
-use crate::sync::RwLock;
 use crate::template_renderer::TemplateRenderer;
 use crate::Result;
 

@@ -3,17 +3,19 @@ use std::sync::Arc;
 use fnv::FnvHashMap;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use serde_json::{to_value, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use tera::Tera;
 
-use async_trait::async_trait;
 use persistence::commands::templates::CommandTemplate;
 use persistence::DbContext;
 
 use crate::event::CbEvent;
 use crate::state::BotContext;
-use crate::util::split_args;
 use crate::Result;
+
+use self::context_providers::*;
+
+mod context_providers;
 
 pub struct TemplateRenderer {
     tera: Tera,
@@ -32,6 +34,7 @@ impl TemplateRenderer {
             context_providers: vec![],
         };
         instance.load_templates(db_context).await?;
+
         instance.register_context_provider(UserProvider);
         instance.register_context_provider(ChannelInfoProvider);
         instance.register_context_provider(ArgsProvider);
@@ -94,87 +97,5 @@ impl TemplateRenderer {
                 .add_raw_template(&format!("{}", template.id), &template.template.unwrap())?;
         }
         Ok(())
-    }
-}
-
-#[async_trait]
-pub trait ContextProvider: Send + Sync {
-    async fn run(
-        &self,
-        request: &JsonValue,
-        event: &CbEvent,
-        bot: &BotContext,
-    ) -> Result<Option<(String, JsonValue)>>;
-}
-
-pub struct UserProvider;
-#[async_trait]
-impl ContextProvider for UserProvider {
-    async fn run(
-        &self,
-        request: &JsonValue,
-        event: &CbEvent,
-        bot: &BotContext,
-    ) -> Result<Option<(String, JsonValue)>> {
-        if let JsonValue::Bool(true) = request["sender"] {
-            Ok(Some((
-                "sender".to_string(),
-                to_value(event.user(bot).await?).unwrap(),
-            )))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-pub struct ChannelInfoProvider;
-#[async_trait]
-impl ContextProvider for ChannelInfoProvider {
-    async fn run(
-        &self,
-        request: &JsonValue,
-        event: &CbEvent,
-        bot: &BotContext,
-    ) -> Result<Option<(String, JsonValue)>> {
-        if let JsonValue::Bool(true) = request["channel"] {
-            Ok(Some((
-                "channel".to_string(),
-                to_value(event.channel_info(bot).await?.as_deref()).unwrap(),
-            )))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-pub struct ArgsProvider;
-#[async_trait]
-impl ContextProvider for ArgsProvider {
-    async fn run(
-        &self,
-        request: &JsonValue,
-        event: &CbEvent,
-        _bot: &BotContext,
-    ) -> Result<Option<(String, JsonValue)>> {
-        if let JsonValue::String(s) = &request["args"] {
-            let message = event.message();
-            let args_str = message.map(|msg| {
-                if let Some(index) = msg.find(char::is_whitespace) {
-                    msg.split_at(index).1
-                } else {
-                    ""
-                }
-            });
-            if s == "complete" {
-                Ok(Some(("args".to_string(), to_value(args_str).unwrap())))
-            } else if s == "array" {
-                let value = to_value(args_str.map(|args| split_args(args))).unwrap();
-                Ok(Some(("args".to_string(), value)))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
     }
 }
