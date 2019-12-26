@@ -1,12 +1,17 @@
-# postgres/redis test environment
 version: '3.1'
 services:
-#  cerebot2:
-#    build: .
-#    restart: always
-#    links:
-#      - redis
-#      - postgres
+  cerebot2:
+    build: .
+    restart: always
+    environment:
+      CEREBOT_AUTH_TOKEN: '${CEREBOT_AUTH_TOKEN?Missing auth token}'
+      CEREBOT_USERNAME: '${CEREBOT_USERNAME?Missing user name}'
+      DATABASE_URL: 'postgres://cerebot:${CEREBOT_DB_PASSWORD:-cerebot}@localhost:5432'
+      REDIS_URL: '127.0.0.1:6379'
+      RUST_LOG: ${RUST_LOG}
+    links:
+      - redis
+      - postgres
   redis:
     image: redis:5-alpine
     ports:
@@ -14,8 +19,8 @@ services:
   postgres:
     image: postgres:12-alpine
     environment:
-      POSTGRES_USER: cerebot
-      POSTGRES_PASSWORD: cerebot
+      POSTGRES_USER: '${CEREBOT_DB_USER:-cerebot}'
+      POSTGRES_PASSWORD: '${CEREBOT_DB_PASSWORD:-cerebot}'
     ports:
       - 5432:5432
     volumes:
