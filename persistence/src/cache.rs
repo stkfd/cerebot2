@@ -18,7 +18,6 @@ pub trait Cacheable<Id> {
         Id: 'async_trait,
         Self: ToRedisValue,
     {
-        // TODO: add specific error for int conversion overflow?
         pool.get()
             .await
             .set_and_expire_seconds(

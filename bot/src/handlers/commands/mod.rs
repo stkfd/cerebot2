@@ -5,6 +5,7 @@ use fnv::FnvHashMap;
 use futures::SinkExt;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use structopt::clap::AppSettings;
 use structopt::StructOpt;
 use tmi_rs::event::*;
 use tmi_rs::{ChatSender, ClientMessage};
@@ -25,6 +26,7 @@ use crate::util::split_args;
 use crate::{Error, Result};
 
 mod channel;
+mod command;
 pub mod error;
 mod reload;
 mod say;
@@ -58,6 +60,7 @@ impl EventHandler<CbEvent> for CommandRouter {
             &channel::ChannelManagerCommand::create,
             &templates::TemplateCommandHandler::create,
             &reload::ReloadCommandHandler::create,
+            &command::CommandManagerCommand::create,
         ];
 
         init_permissions(ctx).await?;
@@ -325,9 +328,17 @@ impl CommandContext<'_> {
     }
 
     pub async fn parse_args<T: Debug + StructOpt>(&self, bot: &BotContext) -> Result<Option<T>> {
-        let result = T::from_iter_safe(split_args(self.args));
+        //let result = T::from_iter_safe(split_args(self.args));
+        let result = T::clap()
+            .global_settings(&[
+                AppSettings::DisableVersion,
+                AppSettings::DisableHelpSubcommand,
+                AppSettings::ColorNever,
+            ])
+            .template(OPTS_HELP_TEMPLATE)
+            .get_matches_from_safe(split_args(self.args));
         match result {
-            Ok(matches) => Ok(Some(matches)),
+            Ok(matches) => Ok(Some(T::from_clap(&matches))),
             // display help or errors if required
             Err(structopt::clap::Error { message, .. }) => {
                 let inline_help_message_rx = Lazy::new(|| Regex::new("\n\\W*").unwrap());
@@ -360,3 +371,9 @@ async fn init_permissions(ctx: &BotContext) -> Result<()> {
     .await?;
     Ok(())
 }
+
+/// help template to show only options and usage
+const OPTS_HELP_TEMPLATE: &str = "{usage} options: {unified}";
+
+/// help template to show subcommands and info
+const SUBCOMMANDS_HELP_TEMPLATE: &str = "{about} - {usage} {subcommands}";

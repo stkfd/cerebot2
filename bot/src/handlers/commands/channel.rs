@@ -1,5 +1,4 @@
 use futures::SinkExt;
-use structopt::clap::AppSettings;
 use structopt::StructOpt;
 use tmi_rs::ClientMessage;
 
@@ -10,7 +9,7 @@ use persistence::permissions::{
     create_permissions, AddPermission, NewPermissionAttributes, PermissionState,
 };
 
-use crate::handlers::commands::{CommandContext, CommandHandler};
+use crate::handlers::commands::*;
 use crate::state::{BotContext, ChannelInfo};
 use crate::util::initialize_command;
 use crate::Result;
@@ -148,7 +147,7 @@ impl CommandHandler for ChannelManagerCommand {
                 cooldown: None,
                 whisper_enabled: true,
             },
-            Vec::<String>::new(),
+            Vec::<String>::new(), // permissions checked inside the handler
             vec!["channel", "ch"],
         )
         .await?;
@@ -175,69 +174,41 @@ impl CommandHandler for ChannelManagerCommand {
 
 /// Manage channel settings
 #[derive(StructOpt, Debug)]
-#[structopt(
-    name = "channel",
-    template("{bin} - {about} USAGE: {usage} {subcommands}"),
-    setting(AppSettings::DisableVersion),
-    setting(AppSettings::DisableHelpSubcommand)
-)]
+#[structopt(name = "channel", template("{about} - {usage} {subcommands}"))]
 enum ChannelCommandArgs {
-    /// Update channel settings
-    #[structopt(
-        setting(AppSettings::DisableVersion),
-        template("{bin} - USAGE: {usage} {options}")
-    )]
+    #[structopt(template(OPTS_HELP_TEMPLATE))]
     Update {
-        /// Channel to update
         channel: String,
         #[structopt(flatten)]
         settings: ChannelSettingsArgs,
     },
-    /// Create a channel
-    #[structopt(
-        setting(AppSettings::DisableVersion),
-        template("{bin} - USAGE: {usage} {options}")
-    )]
+    #[structopt(template(OPTS_HELP_TEMPLATE))]
     New {
-        /// Channel to add
         channel: String,
         #[structopt(flatten)]
         settings: ChannelSettingsArgs,
     },
-    /// Get settings for a channel
-    #[structopt(
-        setting(AppSettings::DisableVersion),
-        template("{bin} - USAGE: {usage} {options}")
-    )]
-    Info {
-        /// Channel to update
-        channel: String,
-    },
+    #[structopt(template(OPTS_HELP_TEMPLATE))]
+    Info { channel: String },
 }
 
 #[derive(StructOpt, Debug)]
 struct ChannelSettingsArgs {
-    /// Join the channel on startup
     #[structopt(long)]
     join: bool,
 
-    /// Don't join the channel on startup
     #[structopt(long, conflicts_with = "join")]
     no_join: bool,
 
-    /// Don't respond to any commands
     #[structopt(long)]
     silence: bool,
 
-    /// Respond to commands
     #[structopt(long, conflicts_with = "silence")]
     respond: bool,
 
-    /// Command prefix
     #[structopt(long)]
     prefix: Option<String>,
 
-    /// Remove command prefix
     #[structopt(long, conflicts_with = "prefix")]
     no_prefix: bool,
 }
