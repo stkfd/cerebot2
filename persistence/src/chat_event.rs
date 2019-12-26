@@ -2,20 +2,21 @@ use std::io::Write;
 use std::ops::Deref;
 
 use chrono::{DateTime, FixedOffset, Utc};
+use darkredis::{CommandList, Value as RedisValue};
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Jsonb;
 use diesel_derive_enum::DbEnum;
 use fnv::FnvHashMap;
-use r2d2_redis::redis;
-use r2d2_redis::redis::PipelineCommands;
 use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
+use crate::impl_redis_bincode;
+use crate::redis_values::*;
 use crate::schema::chat_events;
+use crate::DbContext;
 use crate::Result;
-use crate::{with_redis, DbContext};
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChatEventType {
@@ -59,25 +60,39 @@ impl_redis_bincode!(NewChatEvent);
 /// Convert any chat event into a db entry and save the db entry in the log queue, to
 /// be persisted into the database at a later time
 pub async fn log_event(ctx: &DbContext, event: NewChatEvent) -> Result<()> {
-    with_redis(&ctx.redis_pool, move |conn| {
-        redis::pipe()
-            .rpush("cb:persist_event_queue", &event)
-            .query(conn)
-            .map_err(Into::into)
-    })
-    .await
+    ctx.redis_pool
+        .get()
+        .await
+        .rpush(b"cb:persist_event_queue", event.to_redis()?)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
 }
 
 /// Get all queued log events from redis and save them to the database in a batch
 pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
-    let (queued_events, _) = with_redis(&ctx.redis_pool, move |rd| {
-        redis::pipe()
-            .lrange("cb:persist_event_queue", 0, -1)
-            .del("cb:persist_event_queue")
-            .query::<(Vec<NewChatEvent>, redis::Value)>(rd)
-            .map_err(Into::into)
-    })
-    .await?;
+    let queued_events: Vec<NewChatEvent> = {
+        let commands = CommandList::new("LRANGE")
+            .arg(b"cb:persist_event_queue")
+            .arg(b"0")
+            .arg(b"-1")
+            .command("DEL")
+            .arg(b"cb:persist_event_queue");
+
+        let response = ctx.redis_pool.get().await.run_commands(commands).await?;
+        if let Some(RedisValue::Array(arr)) = response.get(0) {
+            let mut events = vec![];
+            for value in arr.into_iter() {
+                match value {
+                    RedisValue::String(bytes) => events.push(NewChatEvent::from_redis(bytes)?),
+                    _ => {}
+                }
+            }
+            events
+        } else {
+            vec![]
+        }
+    };
 
     diesel::insert_into(chat_events::table)
         .values(queued_events)

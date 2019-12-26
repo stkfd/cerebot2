@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio_diesel::{AsyncRunQueryDsl, OptionalExtension};
 
 use crate::cache::Cacheable;
+use crate::impl_redis_bincode;
 use crate::DbContext;
 use crate::Result;
 
@@ -28,8 +29,8 @@ impl ChannelCommandConfig {
     ) -> Result<Option<Self>> {
         use crate::schema::channel_command_config::dsl::*;
 
-        if let Ok(cached_value) =
-            Self::cache_get(&ctx.redis_pool, (channel_id_value, command_id_value)).await
+        if let Some(cached_value) =
+            Self::cache_get(&ctx.redis_pool, (channel_id_value, command_id_value)).await?
         {
             return Ok(Some(cached_value));
         }

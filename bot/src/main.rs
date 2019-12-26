@@ -29,7 +29,7 @@ fn main() {
     let mut runtime = tokio::runtime::Builder::new()
         .threaded_scheduler()
         .enable_all()
-        .num_threads(8)
+        .core_threads(8)
         .build()
         .unwrap();
 

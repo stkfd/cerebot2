@@ -18,14 +18,12 @@ impl CommandHandler for TemplateCommandHandler {
     }
 
     async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
-        info!("template command");
         let render_output = self
             .ctx
             .templates
             .load()
             .render(cmd.attributes.id, cmd.event, &self.ctx)
             .await?;
-        info!("{:?}", &render_output);
         let trimmed_output = render_output.trim();
         if !trimmed_output.is_empty() {
             cmd.reply(trimmed_output, &self.ctx.sender).await?;

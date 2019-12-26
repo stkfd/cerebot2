@@ -43,7 +43,7 @@ impl Cerebot {
 
     pub async fn run(&mut self) -> Result<RunResult> {
         debug!("Creating database connection pool...");
-        let db_context = DbContext::create(self.config.db(), self.config.redis())?;
+        let db_context = DbContext::create(self.config.db(), self.config.redis()).await?;
         info!("Database connection pool created.");
 
         debug!("Connecting to Twitch chat...");

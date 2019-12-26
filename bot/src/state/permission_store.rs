@@ -83,7 +83,7 @@ impl PermissionStore {
         ctx: &DbContext,
         command_id: i32,
     ) -> Result<CommandPermissionSet> {
-        if let Ok(set) = CommandPermissionSet::cache_get(&ctx.redis_pool, command_id).await {
+        if let Some(set) = CommandPermissionSet::cache_get(&ctx.redis_pool, command_id).await? {
             return Ok(set);
         }
 

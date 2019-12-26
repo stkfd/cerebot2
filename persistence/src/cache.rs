@@ -1,10 +1,11 @@
+use std::convert::TryInto;
 use std::time::Duration;
-
-use r2d2_redis::redis;
 
 use async_trait::async_trait;
 
-use crate::{with_redis, RedisPool, Result};
+use crate::redis_values::{FromRedisValue, ToRedisValue};
+use crate::RedisPool;
+use crate::{Error, Result};
 
 #[async_trait]
 pub trait Cacheable<Id> {
@@ -12,45 +13,35 @@ pub trait Cacheable<Id> {
     fn cache_key_from_id(id: Id) -> String;
     fn cache_life(&self) -> Duration;
 
-    fn cache_set_blocking(&self, con: &mut dyn redis::ConnectionLike) -> Result<()>
-    where
-        for<'a> &'a Self: redis::ToRedisArgs,
-    {
-        redis::cmd("SETEX")
-            .arg(self.cache_key())
-            .arg(self.cache_life().as_secs())
-            .arg(self)
-            .query(con)?;
-        Ok(())
-    }
-
     async fn cache_set(&self, pool: &RedisPool) -> Result<()>
     where
         Id: 'async_trait,
-        for<'a> &'a Self: redis::ToRedisArgs,
+        Self: ToRedisValue,
     {
-        let mut cmd = redis::cmd("SETEX");
-        cmd.arg(self.cache_key())
-            .arg(self.cache_life().as_secs())
-            .arg(self);
-        with_redis(pool, move |conn| cmd.query(conn).map_err(Into::into)).await
-    }
-
-    fn cache_get_blocking(con: &mut dyn redis::ConnectionLike, id: Id) -> Result<Self>
-    where
-        Self: Sized + redis::FromRedisValue,
-    {
-        redis::cmd("GET")
-            .arg(Self::cache_key_from_id(id))
-            .query::<Self>(con)
+        // TODO: add specific error for int conversion overflow?
+        pool.get()
+            .await
+            .set_and_expire_seconds(
+                self.cache_key(),
+                self.to_redis()?,
+                self.cache_life()
+                    .as_secs()
+                    .try_into()
+                    .map_err(Error::InvalidRedisExpiry)?,
+            )
+            .await
             .map_err(Into::into)
     }
 
-    async fn cache_get(pool: &RedisPool, id: Id) -> Result<Self>
+    async fn cache_get(pool: &RedisPool, id: Id) -> Result<Option<Self>>
     where
         Id: 'static + Send,
-        Self: Sized + redis::FromRedisValue + Send + 'static,
+        Self: Sized + FromRedisValue + Send + 'static,
     {
-        with_redis(pool, move |conn| Self::cache_get_blocking(conn, id)).await
+        if let Some(cached_bin) = pool.get().await.get(Self::cache_key_from_id(id)).await? {
+            Ok(Some(Self::from_redis(&cached_bin)?))
+        } else {
+            Ok(None)
+        }
     }
 }

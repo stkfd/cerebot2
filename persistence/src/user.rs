@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio_diesel::{AsyncRunQueryDsl, OptionalExtension};
 
 use crate::cache::Cacheable;
+use crate::impl_redis_bincode;
 use crate::schema::users;
 use crate::DbContext;
 use crate::Result;
@@ -107,7 +108,7 @@ impl User {
     }
 
     pub async fn get(ctx: &DbContext, twitch_id: i32) -> Result<Option<User>> {
-        if let Ok(cached) = User::cache_get(&ctx.redis_pool, twitch_id).await {
+        if let Some(cached) = User::cache_get(&ctx.redis_pool, twitch_id).await? {
             trace!("Cache hit for user {}", cached.name);
             Ok(Some(cached))
         } else {

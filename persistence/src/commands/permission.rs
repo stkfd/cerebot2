@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
+use crate::impl_redis_bincode;
 use crate::{DbPool, Result};
 
 /// Required permissions for a command

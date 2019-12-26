@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::convert::TryInto;
 use std::ops::Deref;
 use std::time::Duration;
 
@@ -6,14 +7,14 @@ use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::prelude::*;
 use diesel::sql_types::Integer;
-use r2d2_redis::redis;
 use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
+use crate::impl_redis_bincode;
 use crate::schema::*;
 use crate::Result;
-use crate::{with_redis, DbPool, RedisPool};
+use crate::{DbPool, Error, RedisPool};
 
 /// DB persisted command attributes
 #[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
@@ -115,18 +116,19 @@ impl CommandAttributes {
             let key = cooldown_cache_key(&self.handler_name, scope);
             let cooldown = cooldown.clone();
 
-            with_redis(pool, move |rd| {
-                redis::cmd("PSETEX")
-                    .arg(key)
-                    .arg(cooldown.as_millis() as u64)
-                    .arg(true)
-                    .query(rd)?;
-                Ok(())
-            })
-            .await
-        } else {
-            Ok(())
+            pool.get()
+                .await
+                .set_and_expire_ms(
+                    key,
+                    b"1",
+                    cooldown
+                        .as_millis()
+                        .try_into()
+                        .map_err(Error::InvalidRedisExpiry)?,
+                )
+                .await?;
         }
+        Ok(())
     }
 
     pub async fn check_cooldown(
@@ -140,10 +142,7 @@ impl CommandAttributes {
             .or_else(|| self.cooldown.as_deref());
         if cooldown.is_some() {
             let key = cooldown_cache_key(&self.handler_name, scope);
-            with_redis(pool, move |rd| {
-                Ok(redis::cmd("EXISTS").arg(key).query::<i64>(rd)? == 0)
-            })
-            .await
+            Ok(!pool.get().await.exists(key).await?)
         } else {
             Ok(true)
         }
