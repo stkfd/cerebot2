@@ -14,6 +14,8 @@ services:
       - postgres
   redis:
     image: redis:5-alpine
+    volumes:
+      - $HOME/cerebot2/redis:/data
   postgres:
     image: postgres:12-alpine
     environment:
@@ -22,4 +24,4 @@ services:
     ports:
       - 6432:5432
     volumes:
-      - $HOME/cerebot2-data:/var/lib/postgresql/data
+      - $HOME/cerebot2/postgres:/var/lib/postgresql/data

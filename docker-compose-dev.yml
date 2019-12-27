@@ -1,0 +1,29 @@
+version: '3.5'
+services:
+#  cerebot:
+#    build: .
+#    restart: always
+#    environment:
+#      CEREBOT_AUTH_TOKEN: '$CEREBOT_AUTH_TOKEN'
+#      CEREBOT_USERNAME: '$CEREBOT_USERNAME'
+#      DATABASE_URL: 'postgres://cerebot:${CEREBOT_DB_PASSWORD:-cerebot}@postgres:5432'
+#      REDIS_URL: 'redis:6379'
+#      RUST_LOG: ${RUST_LOG}
+#    depends_on:
+#      - redis
+#      - postgres
+  redis:
+    image: redis:5-alpine
+    ports:
+      - 6379:6379
+  postgres:
+    image: postgres:12-alpine
+    environment:
+      POSTGRES_USER: cerebot
+      POSTGRES_PASSWORD: cerebot
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+volumes:
+  postgres-data:

@@ -179,12 +179,11 @@ fn create_permissions_blocking(
 pub async fn create_permissions(
     ctx: &DbContext,
     permissions: Vec<AddPermission<'static>>,
-) -> Result<()> {
+) -> Result<usize> {
     with_db(&ctx.db_pool, move |pg| {
         create_permissions_blocking(pg, &permissions)
     })
-    .await?;
-    Ok(())
+    .await
 }
 
 /// Create the global default permissions

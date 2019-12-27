@@ -63,7 +63,7 @@ impl EventHandler<CbEvent> for CommandRouter {
             &command::CommandManagerCommand::create,
         ];
 
-        init_permissions(ctx).await?;
+        init_command_router_permissions(ctx).await?;
 
         let mut command_handlers = FnvHashMap::default();
 
@@ -356,9 +356,9 @@ impl CommandContext<'_> {
 }
 
 /// Initialize permissions required for the command router
-async fn init_permissions(ctx: &BotContext) -> Result<()> {
-    create_permissions(
-        &ctx.db_context,
+async fn init_command_router_permissions(ctx: &BotContext) -> Result<()> {
+    init_permissions(
+        &ctx,
         vec![AddPermission {
             attributes: NewPermissionAttributes {
                 name: "cmd:bypass_cooldowns",
@@ -377,3 +377,13 @@ const OPTS_HELP_TEMPLATE: &str = "{usage} options: {unified}";
 
 /// help template to show subcommands and info
 const SUBCOMMANDS_HELP_TEMPLATE: &str = "{about} - {usage} {subcommands}";
+
+async fn init_permissions(
+    ctx: &BotContext,
+    permissions: Vec<AddPermission<'static>>,
+) -> Result<()> {
+    if create_permissions(&ctx.db_context, permissions).await? > 0 {
+        ctx.reload_permissions().await?;
+    }
+    Ok(())
+}

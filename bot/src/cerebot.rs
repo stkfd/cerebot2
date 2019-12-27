@@ -46,6 +46,9 @@ impl Cerebot {
         let db_context = DbContext::create(self.config.db(), self.config.redis()).await?;
         info!("Database connection pool created.");
 
+        info!("Running migrations");
+        db_context.run_pending_migrations()?;
+
         debug!("Connecting to Twitch chat...");
         let TwitchChatConnection {
             sender,

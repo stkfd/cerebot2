@@ -2,6 +2,8 @@
 extern crate diesel;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate diesel_migrations;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
@@ -11,6 +13,8 @@ use thiserror::Error;
 
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
 pub type RedisPool = darkredis::ConnectionPool;
+
+embed_migrations!("../migrations");
 
 #[derive(Clone)]
 pub struct DbContext {
@@ -31,6 +35,11 @@ impl DbContext {
             db_pool,
             redis_pool,
         })
+    }
+
+    pub fn run_pending_migrations(&self) -> Result<()> {
+        embedded_migrations::run(&*self.db_pool.get()?)?;
+        Ok(())
     }
 }
 
@@ -63,6 +72,8 @@ pub enum Error {
     UserNotFound(i32),
     #[error("Expiry duration out of range ({0})")]
     InvalidRedisExpiry(#[source] TryFromIntError),
+    #[error("Migration running failed: {0}")]
+    MigrationError(#[from] diesel_migrations::RunMigrationsError),
 }
 type Result<T> = std::result::Result<T, Error>;
 
