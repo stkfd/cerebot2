@@ -1,5 +1,5 @@
 FROM rust:1.40-slim-stretch as build
-RUN apt-get update -qq && apt-get install libssl-dev pkg-config -y
+RUN apt-get update -qq && apt-get install libssl-dev pkg-config libpq-dev -y
 
 WORKDIR /cerebot
 
@@ -19,12 +19,17 @@ RUN mkdir util/src && touch util/src/lib.rs
 # build only dependencies with dummy lib/main files
 RUN cargo build --release
 
+# cleanup
+RUN rm -f target/release/deps/cerebot2* target/release/deps/libpersistence* target/release/deps/libutil*
+RUN rm -f target/release/cerebot2* target/release/libpersistence* target/release/libutil*
 # copy full source
-COPY ./. /cerebot/
+COPY . .
+
+# real build and install
 RUN cargo build --release
 
-FROM rust:1.40-slim-stretch
+FROM debian:stretch-slim
+RUN apt-get update -qq && apt-get install libssl-dev libpq-dev -y
 
-COPY --from=build /cerebot/target/release/. /opt/cerebot/
-
-ENTRYPOINT ["/opt/cerebot/cerebot2"]
+COPY --from=build /cerebot/target/release/cerebot2 /usr/local/bin/cerebot2
+CMD ["cerebot2"]
