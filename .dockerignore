@@ -1,2 +1,6 @@
 /target
+/.vscode
 **/*.rs.bk
+Dockerfile
+docker-compose.yml
+.env
