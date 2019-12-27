@@ -14,9 +14,6 @@ services:
       - postgres
   redis:
     image: redis:5-alpine
-    command: 'redis-server --appendonly yes'
-    volumes:
-      - $HOME/cerebot2/redis:/data
   postgres:
     image: postgres:12-alpine
     environment:
