@@ -29,7 +29,7 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:stretch-slim
-RUN apt-get update -qq && apt-get install libssl-dev libpq-dev -y
+RUN apt-get update -qq && apt-get install libssl-dev libpq-dev ca-certificates -y
 
 COPY --from=build /cerebot/target/release/cerebot2 /usr/local/bin/cerebot2
 CMD ["cerebot2"]

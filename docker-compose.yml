@@ -6,10 +6,10 @@ services:
     environment:
       CEREBOT_AUTH_TOKEN: '$CEREBOT_AUTH_TOKEN'
       CEREBOT_USERNAME: '$CEREBOT_USERNAME'
-      DATABASE_URL: 'postgres://cerebot:${CEREBOT_DB_PASSWORD:-cerebot}@localhost:5432'
-      REDIS_URL: '127.0.0.1:6379'
+      DATABASE_URL: 'postgres://cerebot:${CEREBOT_DB_PASSWORD:-cerebot}@postgres:5432'
+      REDIS_URL: 'redis:6379'
       RUST_LOG: ${RUST_LOG}
-    links:
+    depends_on:
       - redis
       - postgres
   redis:
