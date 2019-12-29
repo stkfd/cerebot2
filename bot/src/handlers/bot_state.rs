@@ -30,7 +30,7 @@ impl EventHandler<CbEvent> for BotStateHandler {
         match &**event {
             Event::Reconnect(_) => {
                 // mark for restart on next message
-                ctx.restart();
+                ctx.restart().await?;
             }
             Event::RoomState(data) => {
                 let channel = Channel::get_or_persist_roomstate(

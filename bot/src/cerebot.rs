@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use futures::channel::mpsc::UnboundedReceiver;
-use futures::future::{join, ready};
+use futures::future::join;
 use futures::{SinkExt, StreamExt};
 use tmi_rs::stream::{ClientMessageStream, SendStreamExt};
 use tmi_rs::{ClientMessage, TwitchChatConnection, TwitchClient, TwitchClientConfigBuilder};
@@ -33,7 +33,6 @@ impl Cerebot {
             chat_client: TwitchClientConfigBuilder::default()
                 .username(config.username().to_string())
                 .token(config.auth_token().to_string())
-                //.send_middleware(Arc::new(send_middleware_setup))
                 .build()
                 .map_err(Error::TmiConfig)?
                 .into(),
@@ -58,13 +57,6 @@ impl Cerebot {
         info!("Twitch chat connected.");
 
         let context: BotContext = BotContext::create(db_context, sender).await?;
-
-        // log any connection errors
-        let process_errors = error_receiver.for_each(|error| {
-            async move {
-                error!("Chat connection error: {}", error);
-            }
-        });
 
         let startup_channels = Channel::get_startup_channels(&context.db_context.db_pool)
             .await
@@ -108,7 +100,6 @@ impl Cerebot {
         let dispatch = &dispatch;
         let context = &context;
         let process_messages = receiver
-            .take_while(|_| ready(!context.should_restart()))
             .map(|event| dispatch.dispatch(CbEvent::from(event)))
             .buffer_unordered(10)
             .for_each(|dispatch_result| {
@@ -120,8 +111,20 @@ impl Cerebot {
                 }
             });
 
-        join(process_messages, process_errors).await;
+        // log any connection errors
+        let process_errors = task::spawn(async move {
+            error_receiver
+                .for_each(|error| {
+                    async move {
+                        error!("Chat connection error: {}", error);
+                    }
+                })
+                .await;
+        });
+
+        let _ = join(process_messages, process_errors).await;
         if context.should_restart() {
+            info!("Restarting...");
             Ok(RunResult::Restart)
         } else {
             Ok(RunResult::Ok)

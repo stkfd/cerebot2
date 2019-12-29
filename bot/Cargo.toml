@@ -12,7 +12,7 @@ persistence = { path = "../persistence" }
 util = { path = "../util" }
 
 # Twitch chat connector
-tmi-rs = { git = "https://github.com/cere42/tmi-rs.git" }
+tmi-rs = { git = "https://github.com/cere42/tmi-rs.git", rev = "d7326aa6" }
 
 futures = "^0.3"
 tokio = { version = "0.2", features = ["blocking", "rt-threaded", "time", "macros"] }

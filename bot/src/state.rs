@@ -7,7 +7,7 @@ use arc_swap::ArcSwap;
 use fnv::FnvHashMap;
 use futures::future::join3;
 use serde::Serialize;
-use tmi_rs::ChatSender;
+use tmi_rs::{ChatSender, ClientMessage};
 
 use persistence::channel::Channel;
 use persistence::DbContext;
@@ -17,6 +17,7 @@ use crate::state::command_store::CommandStore;
 use crate::state::permission_store::PermissionStore;
 use crate::template_renderer::TemplateRenderer;
 use crate::Result;
+use futures::SinkExt;
 
 pub mod command_store;
 pub mod permission_store;
@@ -84,8 +85,10 @@ impl BotContext {
     }
 
     /// Restarts the bot after handling the current message
-    pub fn restart(&self) {
-        self.state.restart.store(true, Ordering::SeqCst)
+    pub async fn restart(&self) -> Result<()> {
+        self.state.restart.store(true, Ordering::SeqCst);
+        (&self.sender).send(ClientMessage::Close).await?;
+        Ok(())
     }
 
     /// Check whether a restart is scheduled

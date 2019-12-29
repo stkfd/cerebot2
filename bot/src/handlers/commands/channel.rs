@@ -36,7 +36,7 @@ impl CommandHandler for ChannelManagerCommand {
                     cmd.check_permissions(&self.ctx, &["channels:read"], true)
                         .await?;
 
-                    let channel_info = self.ctx.get_channel(&channel).await;
+                    let channel_info = Channel::get(&self.ctx.db_context, &channel).await?;
                     let reply = format!("{:?}", channel_info);
                     cmd.reply(&reply, sender).await?;
                 }
@@ -44,11 +44,12 @@ impl CommandHandler for ChannelManagerCommand {
                     cmd.check_permissions(&self.ctx, &["channels:manage"], true)
                         .await?;
 
-                    if let Some(channel_info) = self.ctx.get_channel(&channel).await {
+                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
+                    {
                         // update DB
                         let updated_channel = Channel::update_settings(
                             &self.ctx.db_context,
-                            &channel_info.data.name,
+                            &channel_data.name,
                             settings.into_update_data(),
                         )
                         .await?;
@@ -57,7 +58,11 @@ impl CommandHandler for ChannelManagerCommand {
                         self.ctx
                             .update_channel(ChannelInfo {
                                 data: updated_channel,
-                                state: channel_info.state.clone(),
+                                state: self
+                                    .ctx
+                                    .get_channel(&channel_data.name)
+                                    .await
+                                    .and_then(|c| c.state.clone()),
                             })
                             .await;
                         cmd.reply("Channel updated.", sender).await?;
@@ -83,6 +88,8 @@ impl CommandHandler for ChannelManagerCommand {
                             state: None,
                         })
                         .await;
+
+                    // join the channel if join on start is set
                     if let Some(channel_info) = self.ctx.get_channel(&channel).await {
                         if channel_info.data.join_on_start {
                             cmd.reply("Channel created, joining.", sender).await?;
@@ -92,6 +99,34 @@ impl CommandHandler for ChannelManagerCommand {
                         } else {
                             cmd.reply("Channel created.", sender).await?;
                         }
+                    }
+                }
+                ChannelCommandArgs::Join { channel } => {
+                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
+                        .await?;
+
+                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
+                    {
+                        sender
+                            .send(ClientMessage::join(channel_data.name.as_str()))
+                            .await?;
+
+                        let reply = format!("Joined {}!", channel_data.name);
+                        cmd.reply(&reply, &self.ctx.sender).await?;
+                    } else {
+                        cmd.reply("Channel not found.", &self.ctx.sender).await?;
+                    }
+                }
+                ChannelCommandArgs::Part { channel } => {
+                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
+                    {
+                        sender
+                            .send(ClientMessage::Part(channel_data.name.clone()))
+                            .await?;
+                        let reply = format!("Left {}!", channel_data.name);
+                        cmd.reply(&reply, &self.ctx.sender).await?;
+                    } else {
+                        cmd.reply("Channel not found.", &self.ctx.sender).await?;
                     }
                 }
             };
@@ -115,14 +150,6 @@ impl CommandHandler for ChannelManagerCommand {
                         default_state: PermissionState::Deny,
                     },
                     implied_by: vec!["root"],
-                },
-                AddPermission {
-                    attributes: NewPermissionAttributes {
-                        name: "channels:join",
-                        description: Some("Make the bot join channels"),
-                        default_state: PermissionState::Deny,
-                    },
-                    implied_by: vec!["root", "channels:manage"],
                 },
                 AddPermission {
                     attributes: NewPermissionAttributes {
@@ -152,30 +179,18 @@ impl CommandHandler for ChannelManagerCommand {
         )
         .await?;
 
-        // register join command
-        initialize_command(
-            ctx,
-            InsertCommandAttributes {
-                handler_name: NAME.into(),
-                description: Some("Join a channel".into()),
-                enabled: true,
-                default_active: true,
-                cooldown: None,
-                whisper_enabled: true,
-            },
-            vec!["channels:join"],
-            vec!["join"],
-        )
-        .await?;
-
         Ok(Box::new(ChannelManagerCommand { ctx: ctx.clone() }) as Box<dyn CommandHandler>)
     }
 }
 
 /// Manage channel settings
 #[derive(StructOpt, Debug)]
-#[structopt(name = "channel", template("{about} - {usage} {subcommands}"))]
+#[structopt(name = "channel", template("{usage} {subcommands} {unified}"))]
 enum ChannelCommandArgs {
+    #[structopt(template(OPTS_HELP_TEMPLATE))]
+    Join { channel: String },
+    #[structopt(template(OPTS_HELP_TEMPLATE))]
+    Part { channel: String },
     #[structopt(template(OPTS_HELP_TEMPLATE))]
     Update {
         channel: String,

@@ -29,6 +29,7 @@ mod channel;
 mod command;
 pub mod error;
 mod reload;
+mod restart;
 mod say;
 mod templates;
 
@@ -57,10 +58,11 @@ impl EventHandler<CbEvent> for CommandRouter {
     {
         let handler_vec: Vec<&(dyn Sync + Fn(_) -> _)> = vec![
             &say::SayCommand::create,
+            &command::CommandManagerCommand::create,
             &channel::ChannelManagerCommand::create,
             &templates::TemplateCommandHandler::create,
             &reload::ReloadCommandHandler::create,
-            &command::CommandManagerCommand::create,
+            &restart::RestartCommandHandler::create,
         ];
 
         init_command_router_permissions(ctx).await?;
