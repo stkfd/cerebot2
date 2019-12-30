@@ -24,7 +24,8 @@ RUN mkdir web/backend/src && echo "fn main() { }" > web/backend/src/main.rs
 RUN cargo build --bin cerebot2 --release
 
 # cleanup
-RUN rm -f target/release/deps/cerebot2* target/release/deps/libpersistence* target/release/deps/libutil* target/release/deps/$RUN rm -f target/release/cerebot2* target/release/libpersistence* target/release/libutil* target/release/backend*
+RUN rm -f target/release/deps/cerebot2* target/release/deps/backend* target/release/deps/libpersistence* target/release/deps/libutil*
+RUN rm -f target/release/cerebot2* target/release/backend* target/release/libpersistence* target/release/libutil*
 # copy full source
 COPY . .
 
