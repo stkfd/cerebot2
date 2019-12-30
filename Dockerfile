@@ -13,16 +13,18 @@ RUN mkdir bot/src && echo "fn main() { }" > bot/src/main.rs
 # lib configs
 ADD persistence/Cargo.toml /cerebot/persistence/
 RUN mkdir persistence/src && touch persistence/src/lib.rs
+
 ADD util/Cargo.toml /cerebot/util/
-ADD web/backend/Cargo.toml /cerebot/web/backend/
 RUN mkdir util/src && touch util/src/lib.rs
+
+ADD web/backend/Cargo.toml /cerebot/web/backend/
+RUN mkdir web/backend/src && echo "fn main() { }" > web/backend/src/main.rs
 
 # build only dependencies with dummy lib/main files
 RUN cargo build --bin cerebot2 --release
 
 # cleanup
-RUN rm -f target/release/deps/cerebot2* target/release/deps/libpersistence* target/release/deps/libutil*
-RUN rm -f target/release/cerebot2* target/release/libpersistence* target/release/libutil*
+RUN rm -f target/release/deps/cerebot2* target/release/deps/libpersistence* target/release/deps/libutil* target/release/deps/$RUN rm -f target/release/cerebot2* target/release/libpersistence* target/release/libutil* target/release/backend*
 # copy full source
 COPY . .
 
