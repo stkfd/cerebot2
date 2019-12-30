@@ -5,6 +5,7 @@ use persistence::commands::permission::PermissionRequirement;
 #[derive(Debug)]
 pub enum CommandError {
     ReplyError(&'static str),
+    QuoteMismatch,
     ArgumentError(structopt::clap::Error),
     PermissionRequired(PermissionRequirement),
 }
@@ -26,6 +27,7 @@ impl fmt::Display for CommandError {
             CommandError::PermissionRequired(req) => {
                 write!(f, "Permission requirement {:?} is not fulfilled", req)
             }
+            CommandError::QuoteMismatch => write!(f, "Quote mismatch in arguments"),
         }
     }
 }

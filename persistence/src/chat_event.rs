@@ -82,10 +82,9 @@ pub async fn persist_event_queue(ctx: &DbContext) -> Result<()> {
         let response = ctx.redis_pool.get().await.run_commands(commands).await?;
         if let Some(RedisValue::Array(arr)) = response.get(0) {
             let mut events = vec![];
-            for value in arr.into_iter() {
-                match value {
-                    RedisValue::String(bytes) => events.push(NewChatEvent::from_redis(bytes)?),
-                    _ => {}
+            for value in arr.iter() {
+                if let RedisValue::String(bytes) = value {
+                    events.push(NewChatEvent::from_redis(bytes)?)
                 }
             }
             events

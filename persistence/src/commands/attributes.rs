@@ -112,10 +112,8 @@ impl CommandAttributes {
         let cooldown = cooldown_override
             .as_ref()
             .or_else(|| self.cooldown.as_deref());
-        if let Some(cooldown) = cooldown {
+        if let Some(&cooldown) = cooldown {
             let key = cooldown_cache_key(&self.handler_name, scope);
-            let cooldown = cooldown.clone();
-
             pool.get()
                 .await
                 .set_and_expire_ms(

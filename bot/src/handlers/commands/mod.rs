@@ -81,8 +81,11 @@ impl EventHandler<CbEvent> for CommandRouter {
     }
 
     async fn run(&self, event: &CbEvent) -> Result<()> {
+        // will contain everything but the command prefix
         let args;
+        // will contain only the name of the command alias (without prefix)
         let command_name;
+        // channel where the command is called, if applicable
         let channel_opt: Option<Arc<ChannelInfo>>;
 
         // first extract available data from the event, depending on if it's a
@@ -108,14 +111,16 @@ impl EventHandler<CbEvent> for CommandRouter {
                 }
 
                 // extract name of the command
-                let command_end_index = message.find(char::is_whitespace);
+                let command_end_index = message.split_at(prefix.len()).1.find(char::is_whitespace);
                 command_name = if let Some(command_end_index) = command_end_index {
-                    &message[prefix.len()..command_end_index]
+                    &message[prefix.len()..(command_end_index + prefix.len())]
                 } else {
                     &message[prefix.len()..]
                 };
 
-                args = message;
+                debug!("{}", command_name);
+
+                args = &message[prefix.len()..];
             }
             Event::Whisper(data) => {
                 channel_opt = None;
@@ -200,8 +205,15 @@ impl CommandRouter {
                 )
                 .await?
             {
-                debug!("Cooldown for {} still active", cmd_ctx.command_name);
-                return Ok(());
+                let permission_check = cmd_ctx
+                    .check_permissions(&self.ctx, &["cmd:bypass_cooldowns"], false)
+                    .await;
+                if let Err(Error::Command(CommandError::PermissionRequired(_))) = permission_check {
+                    debug!("Cooldown for {} still active", cmd_ctx.command_name);
+                    return Ok(());
+                }
+                // if other errors than missing permission occurred
+                permission_check?;
             }
             cmd_ctx
                 .attributes
@@ -330,15 +342,16 @@ impl CommandContext<'_> {
     }
 
     pub async fn parse_args<T: Debug + StructOpt>(&self, bot: &BotContext) -> Result<Option<T>> {
-        //let result = T::from_iter_safe(split_args(self.args));
+        let args = split_args(self.args)?;
+        debug!("{:?}", args);
+
         let result = T::clap()
             .global_settings(&[
                 AppSettings::DisableVersion,
                 AppSettings::DisableHelpSubcommand,
                 AppSettings::ColorNever,
             ])
-            .template(OPTS_HELP_TEMPLATE)
-            .get_matches_from_safe(split_args(self.args));
+            .get_matches_from_safe(args);
         match result {
             Ok(matches) => Ok(Some(T::from_clap(&matches))),
             // display help or errors if required

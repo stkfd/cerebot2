@@ -72,13 +72,23 @@ impl ContextProvider for ArgsProvider {
         &self,
         request: &JsonValue,
         event: &CbEvent,
-        _bot: &BotContext,
+        bot: &BotContext,
     ) -> Result<Option<(String, JsonValue)>> {
         if let JsonValue::String(s) = &request["args"] {
             let message = event.message();
+            let channel_info = event.channel_info(bot).await?;
+            let prefix = channel_info
+                .as_deref()
+                .and_then(|channel_info| channel_info.data.command_prefix.as_ref());
             let args_str = message.map(|msg| {
-                if let Some(index) = msg.find(char::is_whitespace) {
-                    msg.split_at(index).1
+                let msg_without_prefix = if let Some(prefix) = prefix {
+                    msg.split_at(prefix.len()).1
+                } else {
+                    msg
+                };
+                // remove the command itself
+                if let Some(index) = msg_without_prefix.find(char::is_whitespace) {
+                    msg_without_prefix.split_at(index).1.trim()
                 } else {
                     ""
                 }
@@ -86,7 +96,7 @@ impl ContextProvider for ArgsProvider {
             if s == "complete" {
                 Ok(Some(("args".to_string(), to_value(args_str).unwrap())))
             } else if s == "array" {
-                let value = to_value(args_str.map(|args| split_args(args))).unwrap();
+                let value = to_value(args_str.map(|args| split_args(args).unwrap())).unwrap(); // get rid of unwrap
                 Ok(Some(("args".to_string(), value)))
             } else {
                 Ok(None)

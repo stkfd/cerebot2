@@ -3,3 +3,5 @@
 .env
 .idea/
 .vscode/
+/web/ui/node_modules/
+/web/ui/.next/
