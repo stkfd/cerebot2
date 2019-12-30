@@ -98,8 +98,8 @@ pub struct InsertCommandAttributes<'a> {
     pub whisper_enabled: bool,
 }
 
-fn cooldown_cache_key(handler_name: &str, scope: &str) -> String {
-    format!("cb:cooldowns:{}:{}", handler_name, scope)
+fn cooldown_cache_key(command_id: i32, scope: &str) -> String {
+    format!("cb:cooldowns:cmd:{}:{}", command_id, scope)
 }
 
 impl CommandAttributes {
@@ -113,7 +113,7 @@ impl CommandAttributes {
             .as_ref()
             .or_else(|| self.cooldown.as_deref());
         if let Some(&cooldown) = cooldown {
-            let key = cooldown_cache_key(&self.handler_name, scope);
+            let key = cooldown_cache_key(self.id, scope);
             pool.get()
                 .await
                 .set_and_expire_ms(
@@ -139,7 +139,7 @@ impl CommandAttributes {
             .as_ref()
             .or_else(|| self.cooldown.as_deref());
         if cooldown.is_some() {
-            let key = cooldown_cache_key(&self.handler_name, scope);
+            let key = cooldown_cache_key(self.id, scope);
             Ok(!pool.get().await.exists(key).await?)
         } else {
             Ok(true)
