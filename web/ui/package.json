@@ -1,0 +1,23 @@
+{
+  "name": "cerebot-ui",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "next",
+    "build": "next build",
+    "start": "next start"
+  },
+  "author": "cerebellum42 <cere@fastmail.fm>",
+  "dependencies": {
+    "next": "^9.1.6",
+    "react": "^16.12.0",
+    "react-dom": "^16.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^13.1.1",
+    "@types/react": "^16.9.17",
+    "typescript": "^3.7.4"
+  }
+}
