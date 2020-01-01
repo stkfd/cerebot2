@@ -3,5 +3,6 @@ members = [
     "bot",
     "persistence",
     "util",
-    "web/backend"
+    "web/backend",
+    "unogs_client"
 ]

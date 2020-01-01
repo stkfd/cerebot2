@@ -1,0 +1,16 @@
+[package]
+name = "unogs_client"
+version = "0.1.0"
+authors = ["cerebellum42 <cere@fastmail.fm>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0.9"
+reqwest = { version = "0.10.0", features = ["json"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { version = "0.2", features = ["rt-core", "macros"] }
