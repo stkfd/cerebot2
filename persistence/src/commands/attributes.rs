@@ -6,18 +6,23 @@ use std::time::Duration;
 use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
 use diesel::prelude::*;
-use diesel::sql_types::Integer;
+use diesel::sql_types::{Array, Integer, Text};
 use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
-use crate::impl_redis_bincode;
+use crate::commands::channel_config::ChannelCommandConfigNamed;
+use crate::commands::templates::CommandTemplate;
 use crate::schema::*;
 use crate::Result;
+use crate::{impl_redis_bincode, OffsetParameters};
 use crate::{DbPool, Error, RedisPool};
+use diesel::dsl::count;
+use diesel::sql_query;
 
 /// DB persisted command attributes
-#[derive(Serialize, Deserialize, Debug, Clone, Queryable)]
+#[derive(Serialize, Deserialize, Debug, Clone, Queryable, QueryableByName)]
+#[table_name = "command_attributes"]
 pub struct CommandAttributes {
     pub id: i32,
     /// User facing description
@@ -102,6 +107,24 @@ fn cooldown_cache_key(command_id: i32, scope: &str) -> String {
     format!("cb:cooldowns:cmd:{}:{}", command_id, scope)
 }
 
+#[derive(Debug, QueryableByName)]
+pub struct CommandWithAliases {
+    #[diesel(embed)]
+    pub attributes: CommandAttributes,
+    #[sql_type = "Array<Text>"]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, QueryableByName)]
+pub struct CommandDetails {
+    #[diesel(embed)]
+    pub attributes: CommandAttributes,
+    #[sql_type = "Array<Text>"]
+    pub aliases: Vec<String>,
+    #[diesel(embed)]
+    pub template: CommandTemplate,
+}
+
 impl CommandAttributes {
     pub async fn reset_cooldown(
         &self,
@@ -146,12 +169,73 @@ impl CommandAttributes {
         }
     }
 
-    pub async fn all(pool: &DbPool) -> Result<Vec<CommandAttributes>> {
+    pub async fn list_all(pool: &DbPool) -> Result<Vec<CommandAttributes>> {
         command_attributes::table
             .select(CommandAttributes::COLUMNS)
             .load_async(pool)
             .await
             .map_err(Into::into)
+    }
+
+    pub async fn list_with_aliases(
+        pool: &DbPool,
+        slice: OffsetParameters,
+    ) -> Result<(u64, Vec<CommandWithAliases>)> {
+        let items = sql_query(
+            r#"select
+a.id, a.description, a.enabled, a.default_active, a.cooldown,
+a.whisper_enabled, a.handler_name,
+array_agg(ca.name order by length(ca.name)) aliases
+from command_attributes a
+left join command_aliases ca on a.id = ca.command_id
+where ca.name is not null
+group by a.id
+order by aliases
+offset $1 limit $2"#,
+        )
+        .bind::<Integer, _>(slice.offset() as i32)
+        .bind::<Integer, _>(slice.limit() as i32)
+        .load_async::<CommandWithAliases>(pool)
+        .await?;
+
+        let total: i64 = command_attributes::table
+            .select(count(command_attributes::id))
+            .first_async(pool)
+            .await?;
+
+        Ok((total as u64, items))
+    }
+
+    pub async fn get_detailed(
+        pool: &DbPool,
+        command_id: i32,
+    ) -> Result<(CommandDetails, Vec<ChannelCommandConfigNamed>)> {
+        let command = sql_query(
+            r#"select
+a.id, a.description, a.enabled, a.default_active, a.cooldown,
+a.whisper_enabled, a.handler_name, a.template, a.template_context,
+array_agg(ca.name order by length(ca.name)) aliases
+from command_attributes a
+left join command_aliases ca on a.id = ca.command_id
+where a.id = $1
+group by a.id"#,
+        )
+        .bind::<Integer, _>(command_id)
+        .get_result_async::<CommandDetails>(pool)
+        .await?;
+
+        let channel_configs = channel_command_config::table
+            .inner_join(channels::table.on(channels::id.eq(channel_command_config::channel_id)))
+            .select((
+                channels::id,
+                channels::name,
+                channel_command_config::active,
+                channel_command_config::cooldown,
+            ))
+            .filter(channel_command_config::command_id.eq(command_id))
+            .load_async::<ChannelCommandConfigNamed>(pool)
+            .await?;
+        Ok((command, channel_configs))
     }
 
     pub async fn insert(

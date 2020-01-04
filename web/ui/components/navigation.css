@@ -1,0 +1,18 @@
+.menu {
+    @apply w-auto flex flex-row-reverse flex-grow items-center;
+}
+
+.menu li {
+    @apply ml-5 font-bold;
+    vertical-align: center;
+}
+
+.menu li a:hover,
+.menu li a:active {
+    @apply text-neutral-300;
+    @apply border-b border-dashed border-neutral-300;
+}
+
+.menu li a:active {
+    @apply border-solid border-neutral-300;
+}

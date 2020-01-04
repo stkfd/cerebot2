@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::{DateTime, FixedOffset, Local, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use tokio_diesel::{AsyncRunQueryDsl, OptionalExtension};
+use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
 use crate::impl_redis_bincode;
@@ -93,27 +93,28 @@ impl Cacheable<i32> for User {
 
 impl User {
     pub async fn get_or_insert(ctx: &DbContext, user_info: ChatUserInfo<'_>) -> Result<User> {
-        let maybe_user = Self::get(ctx, user_info.twitch_user_id).await?;
-
-        if let Some(user) = maybe_user {
+        let user = Self::get(ctx, user_info.twitch_user_id).await;
+        if let Ok(user) = user {
             if !user_info.data_matches(&user) {
                 let updated = Self::update(ctx, &user_info).await?;
                 Ok(updated)
             } else {
                 Ok(user)
             }
-        } else {
+        } else if let Err(Error::NotFound) = user {
             Ok(Self::insert(ctx, &user_info).await?)
+        } else {
+            user
         }
     }
 
-    pub async fn get(ctx: &DbContext, twitch_id: i32) -> Result<Option<User>> {
+    pub async fn get(ctx: &DbContext, twitch_id: i32) -> Result<User> {
         if let Some(cached) = User::cache_get(&ctx.redis_pool, twitch_id).await? {
             trace!("Cache hit for user {}", cached.name);
-            Ok(Some(cached))
+            Ok(cached)
         } else {
             let query_result = Self::get_no_cache(&ctx.db_pool, twitch_id).await;
-            if let Ok(Some(user)) = &query_result {
+            if let Ok(user) = &query_result {
                 user.cache_set(&ctx.redis_pool).await?;
             }
 
@@ -121,12 +122,11 @@ impl User {
         }
     }
 
-    async fn get_no_cache(pool: &DbPool, twitch_id: i32) -> Result<Option<User>> {
+    async fn get_no_cache(pool: &DbPool, twitch_id: i32) -> Result<User> {
         users::table
             .filter(users::twitch_user_id.eq(twitch_id))
             .first_async::<User>(pool)
             .await
-            .optional()
             .map_err(Into::into)
     }
 
@@ -137,9 +137,7 @@ impl User {
             mut previous_names,
             mut previous_display_names,
             ..
-        } = Self::get_no_cache(&ctx.db_pool, user_info.twitch_user_id)
-            .await?
-            .ok_or_else(|| Error::UserNotFound(user_info.twitch_user_id))?;
+        } = Self::get_no_cache(&ctx.db_pool, user_info.twitch_user_id).await?;
 
         if user_info.name != name {
             previous_names

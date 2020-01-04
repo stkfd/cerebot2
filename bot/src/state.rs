@@ -6,6 +6,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use fnv::FnvHashMap;
 use futures::future::join3;
+use futures::SinkExt;
 use serde::Serialize;
 use tmi_rs::{ChatSender, ClientMessage};
 
@@ -17,7 +18,6 @@ use crate::state::command_store::CommandStore;
 use crate::state::permission_store::PermissionStore;
 use crate::template_renderer::TemplateRenderer;
 use crate::Result;
-use futures::SinkExt;
 
 pub mod command_store;
 pub mod permission_store;

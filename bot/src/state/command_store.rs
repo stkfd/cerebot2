@@ -21,7 +21,7 @@ impl CommandStore {
             .map(|alias| (alias.name, alias.command_id))
             .collect();
 
-        let commands = CommandAttributes::all(&ctx.db_pool)
+        let commands = CommandAttributes::list_all(&ctx.db_pool)
             .await?
             .into_iter()
             .map(|attr| (attr.id, attr))

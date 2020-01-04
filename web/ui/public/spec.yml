@@ -1,0 +1,269 @@
+openapi: 3.0.0
+servers:
+  - description: Local testing
+    url: http://localhost:3001/api/1.0
+  - description: Cerebot API
+    url: https://cere.ws/api/1.0
+info:
+  version: "1.0"
+  title: Cerebot API
+  description: >-
+    Cerebot API for use by the web ui or other applications
+security:
+  - accessCode:
+      - openid
+paths:
+  /channels:
+    get:
+      operationId: getChannels
+      tags: [channels]
+      summary: List channels
+      description: >-
+        List all bot channels.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/list'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/channel'
+        '401':
+          $ref: '#/components/responses/unauthenticated'
+        '403':
+          $ref: '#/components/responses/unauthorized'
+  /commands:
+    get:
+      operationId: getCommands
+      tags: [commands]
+      summary: List commands
+      description: >-
+        List all bot commands.
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/perPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/list'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/commandAttributes'
+        '401':
+          $ref: '#/components/responses/unauthenticated'
+        '403':
+          $ref: '#/components/responses/unauthorized'
+  /commands/{id}:
+    get:
+      operationId: getCommand
+      tags: [commands]
+      summary: List commands
+      description: >-
+        Get details for a bot command.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/commandAttributes'
+                  - $ref: '#/components/schemas/commandTemplate'
+                  - type: object
+                    properties:
+                      channelConfig:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/channelCommandConfig'
+        '401':
+          $ref: '#/components/responses/unauthenticated'
+        '404':
+          $ref: '#/components/responses/notFound'
+        '403':
+          $ref: '#/components/responses/unauthorized'
+components:
+  schemas:
+    list:
+      type: object
+      properties:
+        page:
+          type: integer
+          title: Current page
+        pageCount:
+          type: integer
+          title: Number of available pages
+        totalCount:
+          type: integer
+          title: Number of items across all pages
+    commandAttributes:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+          example: Longer command description.
+        handlerName:
+          type: string
+        enabled:
+          type: boolean
+        defaultActive:
+          type: boolean
+        cooldown:
+          type: integer
+        whisperEnabled:
+          type: boolean
+        aliases:
+          type: array
+          items:
+            type: string
+    commandTemplate:
+      type: object
+      properties:
+        template:
+          type: string
+          description: Content of the template
+        templateContext:
+          type: object
+          description: Template context requirements
+    channelCommandConfig:
+      type: object
+      description: Command configuration overrides for a channel
+      properties:
+        channelId:
+          type: integer
+        channelName:
+          type: string
+        active:
+          type: boolean
+          description: Whether the command is active in this channel
+        channelCooldown:
+          type: integer
+          description: Channel specific cooldown setting
+    channel:
+      type: object
+      required:
+        - twitchRoomId
+        - enabled
+      properties:
+        id:
+          type: integer
+        twitchRoomId:
+          type: integer
+        enabled:
+          type: boolean
+        name:
+          type: string
+        joinOnStart:
+          type: boolean
+        commandPrefix:
+          type: string
+        silent:
+          type: boolean
+    unauthorized:
+      type: object
+      properties:
+        type:
+          type: string
+          example: https://cere.ws/api/1.0/errors/unauthorized
+        title:
+          type: string
+          example: Unauthorized
+        details:
+          type: string
+          example: You are not authorized for this action.
+        status:
+          type: integer
+          example: 403
+    unauthenticated:
+      type: object
+      properties:
+        type:
+          type: string
+          example: https://cere.ws/api/1.0/errors/unauthenticated
+        title:
+          type: string
+          example: Unauthenticated
+        details:
+          type: string
+          example: You need to be authenticated through Twitch.
+        status:
+          type: integer
+          example: 401
+    notFound:
+      type: object
+      properties:
+        type:
+          type: string
+          example: https://cere.ws/api/1.0/errors/not_found
+        title:
+          type: string
+          example: Not Found
+        status:
+          type: integer
+          example: 404
+  responses:
+    unauthenticated:
+      description: Not logged in
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/unauthenticated'
+    unauthorized:
+      description: Not authorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/unauthorized'
+    notFound:
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/notFound'
+  parameters:
+    page:
+      name: page
+      in: query
+      description: Requested page number
+      schema:
+        type: integer
+        minimum: 1
+    perPage:
+      name: perPage
+      in: query
+      description: Item per page
+      schema:
+        type: integer
+        minimum: 1
+  securitySchemes:
+    accessCode:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://id.twitch.tv/oauth2/authorize
+          tokenUrl: https://id.twitch.tv/oauth2/token
+          scopes:
+            openid: OpenID connect authentication scope

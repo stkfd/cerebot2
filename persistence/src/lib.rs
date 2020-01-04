@@ -1,15 +1,19 @@
 #[macro_use]
 extern crate diesel;
 #[macro_use]
-extern crate log;
-#[macro_use]
 extern crate diesel_migrations;
+#[macro_use]
+extern crate log;
+
+use std::num::TryFromIntError;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use r2d2::Pool;
-use std::num::TryFromIntError;
 use thiserror::Error;
+
+pub use pagination::*;
+use tokio_diesel::AsyncError;
 
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
 pub type RedisPool = darkredis::ConnectionPool;
@@ -47,6 +51,7 @@ pub mod cache;
 pub mod channel;
 pub mod chat_event;
 pub mod commands;
+mod pagination;
 pub mod permissions;
 pub mod schema;
 pub mod user;
@@ -57,35 +62,37 @@ pub mod redis_values;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Database error: {0}")]
-    Database(#[from] diesel::result::Error),
-    #[error("Database error: {0}")]
-    AsyncDiesel(#[from] tokio_diesel::AsyncError),
+    AsyncDiesel(#[source] tokio_diesel::AsyncError),
+
+    #[error("Item not found")]
+    NotFound,
+
     #[error("Connection pool error: {0}")]
     ConnectionPool(#[from] r2d2::Error),
+
     #[error("Redis error: {0}")]
     Redis(#[from] darkredis::Error),
+
     #[error("Redis serialization failed: {0}")]
-    RedisSerialization(#[from] bincode::Error),
-    #[error("Blocking task join error")]
-    Join(#[from] tokio::task::JoinError),
-    #[error("User with twitch ID {0} not found in database")]
-    UserNotFound(i32),
+    Bincode(#[from] bincode::Error),
+
     #[error("Expiry duration out of range ({0})")]
     InvalidRedisExpiry(#[source] TryFromIntError),
+
     #[error("Migration running failed: {0}")]
     MigrationError(#[from] diesel_migrations::RunMigrationsError),
-}
-type Result<T> = std::result::Result<T, Error>;
 
-async fn with_db<O, F>(pool: &DbPool, func: F) -> Result<O>
-where
-    O: Send + 'static,
-    F: FnOnce(&PgConnection) -> Result<O> + Send + 'static,
-{
-    let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let conn = &mut *pool.get()?;
-        func(conn)
-    })
-    .await?
+    #[error("Blocking task join error")]
+    Join(#[from] tokio::task::JoinError),
 }
+
+impl From<tokio_diesel::AsyncError> for Error {
+    fn from(err: AsyncError) -> Self {
+        match err {
+            AsyncError::Error(diesel::result::Error::NotFound) => Error::NotFound,
+            err => Error::AsyncDiesel(err),
+        }
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;

@@ -1,0 +1,21 @@
+.btn {
+    @apply bg-primary-600;
+    @apply border-b-4;
+    @apply border-primary-700;
+    @apply py-1 px-4;
+    @apply rounded;
+    @apply font-bold;
+    outline: none !important;
+}
+
+.btn:hover {
+    @apply bg-primary-700;
+    @apply border-primary-800;
+    @apply text-neutral-300;
+}
+
+.btn:active {
+    @apply bg-primary-800;
+    @apply border-primary-900;
+    @apply text-neutral-400;
+}

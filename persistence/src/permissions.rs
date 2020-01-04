@@ -1,17 +1,18 @@
 use std::iter::FromIterator;
 
 use diesel::expression::sql_literal::sql;
-use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel_derive_enum::DbEnum;
 use fnv::FnvHashSet;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use tokio_diesel::AsyncRunQueryDsl;
+use tokio_diesel::{AsyncConnection, AsyncRunQueryDsl};
 
 use crate::schema::{command_permissions, implied_permissions, permissions, user_permissions};
 use crate::Result;
-use crate::{with_db, DbContext, DbPool};
+use crate::{DbContext, DbPool};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use std::borrow::Cow;
 
 #[derive(DbEnum, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PermissionState {
@@ -29,7 +30,7 @@ pub struct Permission {
     pub default_state: PermissionState,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Clone, Debug)]
 #[table_name = "permissions"]
 pub struct NewPermissionAttributes<'a> {
     pub name: &'a str,
@@ -37,6 +38,7 @@ pub struct NewPermissionAttributes<'a> {
     pub default_state: PermissionState,
 }
 
+#[derive(Clone, Debug)]
 pub struct AddPermission<'a> {
     pub attributes: NewPermissionAttributes<'a>,
     pub implied_by: Vec<&'a str>,
@@ -125,22 +127,13 @@ impl UserPermission {
 }
 
 /// A set of default permissions that should always be available to all commands
-static DEFAULT_PERMISSIONS: Lazy<Vec<AddPermission<'static>>> = Lazy::new(|| {
-    vec![AddPermission {
-        attributes: NewPermissionAttributes {
-            name: "root",
-            description: Some("Super admin override"),
-            default_state: PermissionState::Deny,
-        },
-        implied_by: vec![],
-    }]
-});
+static DEFAULT_PERMISSIONS: OnceCell<Vec<AddPermission<'static>>> = OnceCell::new();
 
-fn create_permissions_blocking(
-    pg: &PgConnection,
-    new_permissions: &[AddPermission<'_>],
+async fn create_permissions(
+    pg: &DbPool,
+    new_permissions: Cow<'static, Vec<AddPermission<'_>>>,
 ) -> Result<usize> {
-    pg.transaction(|| {
+    pg.transaction(move |pg| {
         let mut added = 0;
         let existing = FnvHashSet::from_iter(
             permissions::table
@@ -149,7 +142,7 @@ fn create_permissions_blocking(
                 .into_iter(),
         );
 
-        for permission in new_permissions {
+        for permission in new_permissions.as_ref() {
             if existing.contains(&permission.attributes.name as &str) {
                 continue;
             }
@@ -174,22 +167,21 @@ fn create_permissions_blocking(
 
         Ok(added)
     })
-}
-
-pub async fn create_permissions(
-    ctx: &DbContext,
-    permissions: Vec<AddPermission<'static>>,
-) -> Result<usize> {
-    with_db(&ctx.db_pool, move |pg| {
-        create_permissions_blocking(pg, &permissions)
-    })
     .await
+    .map_err(Into::into)
 }
 
 /// Create the global default permissions
 pub async fn create_default_permissions(ctx: &DbContext) -> Result<usize> {
-    with_db(&ctx.db_pool, move |pg| {
-        create_permissions_blocking(pg, &*DEFAULT_PERMISSIONS)
-    })
-    .await
+    let permissions: &'static _ = DEFAULT_PERMISSIONS.get_or_init(|| {
+        vec![AddPermission {
+            attributes: NewPermissionAttributes {
+                name: "root",
+                description: Some("Super admin override"),
+                default_state: PermissionState::Deny,
+            },
+            implied_by: vec![],
+        }]
+    });
+    create_permissions(&ctx.db_pool, Cow::Borrowed(permissions)).await
 }

@@ -1,8 +1,12 @@
-import * as React from "react";
-import { NextPage } from "next";
+import Page from '../layouts/page'
+import Navigation from "../components/navigation";
+import PageContent from "../layouts/pageContent";
 
-const HomePage: NextPage = () => {
-    return <div>Welcome to Next.js!</div>
-};
-
-export default HomePage;
+export default () => (
+    <Page>
+        <Navigation/>
+        <PageContent>
+            <p>Home</p>
+        </PageContent>
+    </Page>
+);

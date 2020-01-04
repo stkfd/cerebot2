@@ -12,7 +12,6 @@ log = "0.4"
 tokio-diesel = "0.3.0"
 
 # Twitch chat connector
-tmi-rs = { git = "https://github.com/cere42/tmi-rs.git" }
 serde = { version = "1", features = ["derive"] }
 
 # only required for serde_json::Value to make JSONB columns work with diesel

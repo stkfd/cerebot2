@@ -1,0 +1,35 @@
+/* purgecss start ignore */
+@tailwind base;
+@tailwind components;
+/* purgecss end ignore */
+@tailwind utilities;
+
+/* purgecss start ignore */
+:root {
+    font-size: 15px;
+    --color-primary-100: #f0fff4;
+    --color-primary-200: #c6f6d5;
+    --color-primary-300: #9ae6b4;
+    --color-primary-400: #68d391;
+    --color-primary-500: #48bb78;
+    --color-primary-600: #38a169;
+    --color-primary-700: #2f855a;
+    --color-primary-800: #276749;
+    --color-primary-900: #22543d;
+    --color-neutral-100: #f7fafc;
+    --color-neutral-200: #edf2f7;
+    --color-neutral-300: #e2e8f0;
+    --color-neutral-400: #cbd5e0;
+    --color-neutral-500: #a0aec0;
+    --color-neutral-600: #718096;
+    --color-neutral-700: #4a5568;
+    --color-neutral-800: #2d3748;
+    --color-neutral-900: #1a202c;
+    --color-white: #fff;
+    --color-black: #000;
+}
+
+body {
+    @apply bg-neutral-900 text-neutral-200;
+}
+/* purgecss end ignore */
