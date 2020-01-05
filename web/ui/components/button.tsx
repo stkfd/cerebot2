@@ -1,11 +1,11 @@
-import {ComponentProps, ReactNode} from "react";
+import {ComponentProps, FunctionComponent} from "react";
 import "./button.css";
 
 interface Props extends ComponentProps<'button'> {
-    outline?: boolean,
+    outline?: boolean;
 }
 
-const Button = (props: Props) => {
+const Button: FunctionComponent<Props> = (props: Props) => {
     return <>
         <button
             className="btn" {...props}

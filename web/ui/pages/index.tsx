@@ -1,8 +1,9 @@
 import Page from '../layouts/page'
 import TopBar from "../components/topBar";
 import PageContent from "../layouts/pageContent";
+import {NextPage} from "next";
 
-export default () => (
+const Home: NextPage = () => (
     <Page>
         <TopBar/>
         <PageContent>
@@ -10,3 +11,5 @@ export default () => (
         </PageContent>
     </Page>
 );
+
+export default Home;

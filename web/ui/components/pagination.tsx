@@ -41,10 +41,7 @@ const Pagination: FunctionComponent<PaginationProps> = (
         <label className="page-size-label">Per Page:</label>
         <select className="page-size"
                 value={pageSize}
-                onChange={event => {
-                    console.log(event.currentTarget.value);
-                    setPageSize(parseInt(event.currentTarget.value))
-                }}>
+                onChange={(event): void => setPageSize(parseInt(event.currentTarget.value))}>
             <option>10</option>
             <option>25</option>
             <option>50</option>

@@ -16,7 +16,7 @@ const api = new CommandsApi({
 });
 
 interface Props {
-    data?: CommandList
+    data?: CommandList;
 }
 
 const defaultPageSize = 25;
@@ -49,6 +49,7 @@ const CommandsIndex: NextPage<Props> = (props) => {
         <PageTitle>Commands</PageTitle>
         <PageContent>
             <CommandsTable
+                loading={loadingState}
                 fetchData={fetchData}
                 data={data}
                 page={page}
@@ -58,7 +59,7 @@ const CommandsIndex: NextPage<Props> = (props) => {
     </Page>;
 };
 
-CommandsIndex.getInitialProps = async (context) => {
+CommandsIndex.getInitialProps = async (context): Promise<Props> => {
     const { page, perPage } = getPaginationParams(context.query, defaultPageSize);
     return {
         data: (await api.getCommands(page, perPage)).data

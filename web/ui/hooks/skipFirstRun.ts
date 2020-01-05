@@ -1,6 +1,6 @@
 import {useLayoutEffect, useRef} from "react";
 
-export function useInitialRender() {
+export function useInitialRender(): boolean {
     const isFirstRun = useRef(true);
     useLayoutEffect(() => {
         if (isFirstRun) {

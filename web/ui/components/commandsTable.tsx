@@ -1,13 +1,43 @@
+/* eslint-disable react/jsx-key */
 import {PaginationParams, visualizeBool} from "../lib/util";
 import * as React from "react";
 import {usePagination, useTable} from "react-table";
-import {CommandAttributes, CommandList, List} from "../api-client";
+import {CommandAttributes, CommandList} from "../api-client";
 import Pagination from "./pagination";
 import {useRouter} from "next/router";
 import {useInitialRender} from "../hooks/skipFirstRun";
+import {LoadingState} from "../hooks/loading";
+
+const columns = [
+    {
+        Header: 'Alias',
+        accessor: 'aliases',
+    },
+    {
+        Header: 'Description',
+        accessor: 'description',
+    },
+    {
+        Header: 'Cooldown',
+        accessor: 'cooldown',
+    },
+    {
+        Header: 'Handler',
+        accessor: 'handlerName',
+    },
+    {
+        Header: 'Enabled',
+        accessor: 'enabled',
+    },
+    {
+        Header: 'Whisper',
+        accessor: 'whisperEnabled',
+    },
+];
 
 interface CommandsTableProps extends PaginationParams {
-    data: CommandList
+    loading: LoadingState;
+    data: CommandList;
     fetchData: (pagination: PaginationParams) => Promise<void>;
 }
 
@@ -21,8 +51,6 @@ export interface MappedCommandAttributes {
     whisperEnabled?: string;
     aliases?: string;
 }
-
-type MappedCommandList = List & { items: Array<MappedCommandAttributes> };
 
 function mapData(data: Array<CommandAttributes>): Array<MappedCommandAttributes> {
     return data.map(command => ({
@@ -75,6 +103,10 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
         if (!initialRender) fetchData({page: pageIndex, perPage: pageSize });
     }, [pageIndex, pageSize]);
 
+    const updatePageSize = (newPageSize: number): void => {
+        router.push({pathname: router.pathname, query: { ...router.query, page: 0, perPage: newPageSize}})
+    };
+
     return <div>
         <Pagination
             pageIndex={pageIndex}
@@ -82,7 +114,7 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
             pageCount={pageCount}
             canPreviousPage={canPreviousPage}
             canNextPage={canNextPage}
-            setPageSize={(newPageSize) => router.push({pathname: router.pathname, query: { ...router.query, page: 0, perPage: newPageSize}})}
+            setPageSize={updatePageSize}
         />
         <table className="table-auto w-full" {...getTableProps()}>
             <thead>
@@ -93,7 +125,7 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
                 </tr>
             </thead>
             <tbody {...getTableBodyProps()}>
-                {page.map((row, i) => {
+                {page.map((row) => {
                     prepareRow(row);
                     return (
                         <tr {...row.getRowProps()}>
@@ -107,32 +139,5 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
         </table>
     </div>;
 };
-
-const columns = [
-    {
-        Header: 'Alias',
-        accessor: 'aliases',
-    },
-    {
-        Header: 'Description',
-        accessor: 'description',
-    },
-    {
-        Header: 'Cooldown',
-        accessor: 'cooldown',
-    },
-    {
-        Header: 'Handler',
-        accessor: 'handlerName',
-    },
-    {
-        Header: 'Enabled',
-        accessor: 'enabled',
-    },
-    {
-        Header: 'Whisper',
-        accessor: 'whisperEnabled',
-    },
-];
 
 export default CommandsTable;

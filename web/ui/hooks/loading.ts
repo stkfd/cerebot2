@@ -1,8 +1,8 @@
 import * as React from "react";
 
 export interface LoadingState {
-    loading: boolean,
-    slow: boolean,
+    loading: boolean;
+    slow: boolean;
 }
 
 export function useLoading(loadingInit: boolean, slowInit: boolean): [LoadingState, typeof setLoading] {
@@ -11,7 +11,7 @@ export function useLoading(loadingInit: boolean, slowInit: boolean): [LoadingSta
 
     const setIdRef = React.useRef<number>(0);
 
-    function setLoading(isLoading: boolean) {
+    function setLoading(isLoading: boolean): void {
         const setId = ++setIdRef.current;
         setLoadingInitial(isLoading);
         if (!isLoading) {

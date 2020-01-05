@@ -3,8 +3,9 @@ import {pageTitle} from "../../util";
 import TopBar from "../../components/topBar";
 import PageContent from "../../layouts/pageContent";
 import PageTitle from "../../components/page/title";
+import {NextPage} from "next";
 
-export default () => (
+const ChannelsPage: NextPage = () => (
     <Page title={pageTitle("Channels")}>
         <TopBar/>
         <PageContent>
@@ -12,3 +13,5 @@ export default () => (
         </PageContent>
     </Page>
 );
+
+export default ChannelsPage;

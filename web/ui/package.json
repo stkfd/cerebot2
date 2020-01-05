@@ -9,7 +9,8 @@
     "start": "next start",
     "codegen": "openapi-generator generate -i public/spec.yml -g typescript-axios -o api-client/",
     "swaggerTheme": "node-sass --include-path node_modules styles/swagger/main.scss styles/swagger/main.css",
-    "watchSwaggerTheme": "node-sass --include-path node_modules --watch styles/swagger/main.scss styles/swagger/main.css"
+    "watchSwaggerTheme": "node-sass --include-path node_modules --watch styles/swagger/main.scss styles/swagger/main.css",
+    "lint": "eslint ."
   },
   "author": "cerebellum42 <cere@fastmail.fm>",
   "dependencies": {
@@ -38,6 +39,10 @@
     "@types/react": "^16.9.17",
     "@types/react-table": "^7.0.2",
     "@types/swagger-ui-react": "^3.23.0",
+    "@typescript-eslint/eslint-plugin": "^2.14.0",
+    "@typescript-eslint/parser": "^2.14.0",
+    "eslint": "^6.8.0",
+    "eslint-plugin-react": "^7.17.0",
     "prettier": "^1.19.1",
     "tachyons-sass": "^4.9.5"
   }

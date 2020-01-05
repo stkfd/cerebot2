@@ -4,10 +4,11 @@ import PageContent from "../layouts/pageContent";
 import dynamic from "next/dynamic";
 import * as React from "react";
 import "../styles/swagger/main.css"
+import {NextPage} from "next";
 
 const SwaggerUI = dynamic(import("swagger-ui-react"), { ssr: false });
 
-const DocPage = () => {
+const DocPage: NextPage = () => {
     return <Page>
         <TopBar/>
         <PageContent>
