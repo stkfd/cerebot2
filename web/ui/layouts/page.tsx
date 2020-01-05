@@ -8,7 +8,7 @@ interface Props {
     loading?: boolean;
 }
 
-const Page: FunctionComponent = ({ children, title, loading }: Props) => (
+const Page: FunctionComponent<Props> = ({ children, title, loading }: Props) => (
     <>
         <Meta title={title || "cerebot"} />
         { children }

@@ -1,6 +1,7 @@
 /* eslint-disable react/jsx-key */
 import {PaginationParams, visualizeBool} from "../lib/util";
 import * as React from "react";
+import {useEffect} from "react";
 import {usePagination, useTable} from "react-table";
 import {CommandAttributes, CommandList} from "../api-client";
 import Pagination from "./pagination";
@@ -80,31 +81,43 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
         pageCount,
         setPageSize,
         gotoPage,
-        state: { pageIndex, pageSize }
+        state: {pageIndex, pageSize}
     } = useTable(
         {
             columns,
             data: mapData(props.data.items),
             manualPagination: true,
             pageCount: props.data.pageCount,
-            initialState: { pageIndex: pageIndexQuery, pageSize: pageSizeQuery }
+            initialState: {pageIndex: pageIndexQuery, pageSize: pageSizeQuery}
         },
         usePagination
     );
 
-    React.useEffect(() => {
-        if (pageIndexQuery !== pageIndex || pageSizeQuery !== pageSize) {
+    if (initialRender && !props.data.items.length) {
+        fetchData({
+            page: pageIndex,
+            perPage: pageSize
+        });
+    }
+
+    useEffect(() => {
+        if (pageIndexQuery !== pageIndex) {
             gotoPage(pageIndexQuery);
+        }
+        if (pageSizeQuery !== pageSize) {
             setPageSize(pageSizeQuery);
         }
     }, [pageIndexQuery, pageSizeQuery]);
 
-    React.useEffect(() => {
-        if (!initialRender) fetchData({page: pageIndex, perPage: pageSize });
+    useEffect(() => {
+        if (!initialRender) fetchData({
+            page: pageIndex,
+            perPage: pageSize
+        });
     }, [pageIndex, pageSize]);
 
     const updatePageSize = (newPageSize: number): void => {
-        router.push({pathname: router.pathname, query: { ...router.query, page: 0, perPage: newPageSize}})
+        router.push({pathname: router.pathname, query: {...router.query, page: 0, perPage: newPageSize}})
     };
 
     return <div>
@@ -118,23 +131,23 @@ const CommandsTable: React.FunctionComponent<CommandsTableProps> = (props) => {
         />
         <table className="table-auto w-full" {...getTableProps()}>
             <thead>
-                <tr>
-                    {headers.map(column => (
-                        <th {...column.getHeaderProps()}>{column.render('Header')}</th>
-                    ))}
-                </tr>
+            <tr>
+                {headers.map(column => (
+                    <th {...column.getHeaderProps()}>{column.render('Header')}</th>
+                ))}
+            </tr>
             </thead>
             <tbody {...getTableBodyProps()}>
-                {page.map((row) => {
-                    prepareRow(row);
-                    return (
-                        <tr {...row.getRowProps()}>
-                            {row.cells.map(cell => {
-                                return <td {...cell.getCellProps()}>{cell.render('Cell')}</td>
-                            })}
-                        </tr>
-                    )
-                })}
+            {page.map((row) => {
+                prepareRow(row);
+                return (
+                    <tr {...row.getRowProps()}>
+                        {row.cells.map(cell => {
+                            return <td {...cell.getCellProps()}>{cell.render('Cell')}</td>
+                        })}
+                    </tr>
+                )
+            })}
             </tbody>
         </table>
     </div>;

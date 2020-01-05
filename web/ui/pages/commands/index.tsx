@@ -62,7 +62,7 @@ const CommandsIndex: NextPage<Props> = (props) => {
 CommandsIndex.getInitialProps = async (context): Promise<Props> => {
     const { page, perPage } = getPaginationParams(context.query, defaultPageSize);
     return {
-        data: (await api.getCommands(page, perPage)).data
+        data: typeof window === 'undefined' ? (await api.getCommands(page, perPage)).data : undefined
     }
 };
 
