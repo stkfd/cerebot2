@@ -141,8 +141,8 @@ impl CommandHandler for ChannelManagerCommand {
         Self: Sized,
     {
         create_permissions(
-            &ctx.db_context,
-            vec![
+            &ctx.db_context.db_pool,
+            Cow::Owned(vec![
                 AddPermission {
                     attributes: NewPermissionAttributes {
                         name: "channels:manage",
@@ -159,7 +159,7 @@ impl CommandHandler for ChannelManagerCommand {
                     },
                     implied_by: vec!["root", "channels:manage"],
                 },
-            ],
+            ]),
         )
         .await?;
 

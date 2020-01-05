@@ -129,7 +129,7 @@ impl UserPermission {
 /// A set of default permissions that should always be available to all commands
 static DEFAULT_PERMISSIONS: OnceCell<Vec<AddPermission<'static>>> = OnceCell::new();
 
-async fn create_permissions(
+pub async fn create_permissions(
     pg: &DbPool,
     new_permissions: Cow<'static, Vec<AddPermission<'_>>>,
 ) -> Result<usize> {

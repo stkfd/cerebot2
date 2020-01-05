@@ -2,9 +2,9 @@ use std::fmt;
 use std::fmt::Debug;
 
 use serde::de::{MapAccess, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Genre {
     /// Title of the genre
     name: String,

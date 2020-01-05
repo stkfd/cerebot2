@@ -54,8 +54,8 @@ impl CommandHandler for CommandManagerCommand {
         Self: Sized,
     {
         create_permissions(
-            &ctx.db_context,
-            vec![
+            &ctx.db_context.db_pool,
+            Cow::Owned(vec![
                 AddPermission {
                     attributes: NewPermissionAttributes {
                         name: "commands:manage",
@@ -72,7 +72,7 @@ impl CommandHandler for CommandManagerCommand {
                     },
                     implied_by: vec!["root", "commands:manage"],
                 },
-            ],
+            ]),
         )
         .await?;
 

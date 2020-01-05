@@ -24,6 +24,7 @@ use crate::handlers::commands::error::CommandError;
 use crate::state::{BotContext, BotStateError, ChannelInfo};
 use crate::util::split_args;
 use crate::{Error, Result};
+use std::borrow::Cow;
 
 mod channel;
 mod command;
@@ -95,7 +96,7 @@ impl EventHandler<CbEvent> for CommandRouter {
                 channel_opt = event.channel_info(&self.ctx).await?;
                 let channel = channel_opt
                     .as_ref()
-                    .ok_or_else(|| Error::from(BotStateError::MissingChannel))?;
+                    .ok_or_else(|| BotStateError::MissingChannel)?;
 
                 // abort if the channel has no prefix or is set to silent
                 if channel.data.silent || channel.data.command_prefix.is_none() {
@@ -194,7 +195,9 @@ impl CommandRouter {
                 return Ok(());
             }
 
-            let channel_cooldown = channel_config.as_ref().and_then(|config| config.cooldown);
+            let channel_cooldown = channel_config
+                .as_ref()
+                .and_then(|config| config.cooldown.as_deref().copied());
 
             if !cmd_ctx
                 .attributes
@@ -374,14 +377,14 @@ impl CommandContext<'_> {
 async fn init_command_router_permissions(ctx: &BotContext) -> Result<()> {
     init_permissions(
         &ctx,
-        vec![AddPermission {
+        Cow::Owned(vec![AddPermission {
             attributes: NewPermissionAttributes {
                 name: "cmd:bypass_cooldowns",
                 description: Some("Bypass command cooldowns."),
                 default_state: PermissionState::Deny,
             },
             implied_by: vec!["root"],
-        }],
+        }]),
     )
     .await?;
     Ok(())
@@ -395,9 +398,9 @@ const SUBCOMMANDS_HELP_TEMPLATE: &str = "{about} - {usage} {subcommands}";
 
 async fn init_permissions(
     ctx: &BotContext,
-    permissions: Vec<AddPermission<'static>>,
+    permissions: Cow<'static, Vec<AddPermission<'_>>>,
 ) -> Result<()> {
-    if create_permissions(&ctx.db_context, permissions).await? > 0 {
+    if create_permissions(&ctx.db_context.db_pool, permissions).await? > 0 {
         ctx.reload_permissions().await?;
     }
     Ok(())

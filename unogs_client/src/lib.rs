@@ -97,7 +97,7 @@ impl TryFrom<&HeaderMap> for QuotaState {
 }
 
 /// Generic list of items in a response
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct List<T> {
     /// Number of items in the response
