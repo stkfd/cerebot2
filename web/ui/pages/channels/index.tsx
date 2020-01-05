@@ -1,13 +1,14 @@
 import Page from '../../layouts/page'
 import {pageTitle} from "../../util";
-import Navigation from "../../components/navigation";
+import TopBar from "../../components/topBar";
 import PageContent from "../../layouts/pageContent";
+import PageTitle from "../../components/page/title";
 
 export default () => (
     <Page title={pageTitle("Channels")}>
-        <Navigation/>
+        <TopBar/>
         <PageContent>
-            <h2>Channels</h2>
+            <PageTitle fullWidth>Channels</PageTitle>
         </PageContent>
     </Page>
 );

@@ -17,7 +17,7 @@ import { Configuration } from "./configuration";
 // @ts-ignore
 import globalAxios, { AxiosPromise, AxiosInstance } from 'axios';
 
-export const BASE_PATH = "https://cere.ws/api/1.0".replace(/\/+$/, "");
+export const BASE_PATH = "http://localhost:3001/api/1.0".replace(/\/+$/, "");
 
 /**
  *

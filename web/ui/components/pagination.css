@@ -1,0 +1,37 @@
+
+.pagination {
+    @apply flex justify-end;
+}
+
+.pagination a {
+    @apply border-primary-600 px-2 py-1 bg-neutral-800 select-none;
+    @apply border-t border-b border-l;
+    border-left-color: var(--color-neutral-700);
+}
+
+.pagination a:hover {
+    @apply bg-neutral-700;
+}
+
+.pagination a:first-of-type {
+    @apply border-l rounded-l;
+    border-left-color: var(--color-primary-600);
+}
+
+.pagination .current {
+    @apply bg-primary-600;
+}
+
+.pagination .current:hover {
+    @apply bg-primary-500;
+}
+
+.pagination .page-size-label {
+    @apply border-primary-600 border-t border-b border-l bg-neutral-800 pl-2 pr-1 py-1;
+    border-left-color: var(--color-neutral-700);
+}
+
+.pagination .page-size {
+    @apply appearance-none bg-neutral-800 px-2 py-1 rounded-r;
+    @apply border-primary-600 border-t border-b border-r rounded-r;
+}

@@ -1,0 +1,16 @@
+table {
+    @apply my-2;
+}
+
+table th {
+    @apply border-b border-t border-primary-800 px-3 py-3 bg-neutral-800 font-bold;
+    text-align: left;
+}
+
+table td {
+    @apply px-3 py-3 bg-neutral-900 border-neutral-800 border-b;
+}
+
+table tr:hover td {
+    @apply bg-neutral-800;
+}

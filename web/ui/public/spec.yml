@@ -57,14 +57,7 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/list'
-                  - type: object
-                    properties:
-                      items:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/commandAttributes'
+                $ref: '#/components/schemas/commandList'
         '401':
           $ref: '#/components/responses/unauthenticated'
         '403':
@@ -107,6 +100,10 @@ components:
   schemas:
     list:
       type: object
+      required:
+        - page
+        - pageCount
+        - totalCount
       properties:
         page:
           type: integer
@@ -139,6 +136,17 @@ components:
           type: array
           items:
             type: string
+    commandList:
+      allOf:
+        - $ref: '#/components/schemas/list'
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/commandAttributes'
     commandTemplate:
       type: object
       properties:

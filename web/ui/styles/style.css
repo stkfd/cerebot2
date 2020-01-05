@@ -1,8 +1,11 @@
+@import "table.css";
+
 /* purgecss start ignore */
 @tailwind base;
 @tailwind components;
 /* purgecss end ignore */
 @tailwind utilities;
+
 
 /* purgecss start ignore */
 :root {
@@ -16,6 +19,15 @@
     --color-primary-700: #2f855a;
     --color-primary-800: #276749;
     --color-primary-900: #22543d;
+    --color-secondary-100: #fffff0;
+    --color-secondary-200: #fefcbf;
+    --color-secondary-300: #faf089;
+    --color-secondary-400: #f6e05e;
+    --color-secondary-500: #ecc94b;
+    --color-secondary-600: #d69e2e;
+    --color-secondary-700: #b7791f;
+    --color-secondary-800: #975a16;
+    --color-secondary-900: #744210;
     --color-neutral-100: #f7fafc;
     --color-neutral-200: #edf2f7;
     --color-neutral-300: #e2e8f0;
@@ -32,4 +44,6 @@
 body {
     @apply bg-neutral-900 text-neutral-200;
 }
+
+
 /* purgecss end ignore */

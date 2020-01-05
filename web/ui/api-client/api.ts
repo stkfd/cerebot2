@@ -69,11 +69,23 @@ export interface Channel {
     silent?: boolean;
 }
 /**
- * 
+ * Command configuration overrides for a channel
  * @export
  * @interface ChannelCommandConfig
  */
 export interface ChannelCommandConfig {
+    /**
+     * 
+     * @type {number}
+     * @memberof ChannelCommandConfig
+     */
+    channelId?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ChannelCommandConfig
+     */
+    channelName?: string;
     /**
      * Whether the command is active in this channel
      * @type {boolean}
@@ -107,6 +119,12 @@ export interface CommandAttributes {
     description?: string;
     /**
      * 
+     * @type {string}
+     * @memberof CommandAttributes
+     */
+    handlerName?: string;
+    /**
+     * 
      * @type {boolean}
      * @memberof CommandAttributes
      */
@@ -131,10 +149,54 @@ export interface CommandAttributes {
     whisperEnabled?: boolean;
     /**
      * 
-     * @type {string}
+     * @type {Array<string>}
      * @memberof CommandAttributes
      */
-    handlerName?: string;
+    aliases?: Array<string>;
+}
+/**
+ * 
+ * @export
+ * @interface CommandList
+ */
+export interface CommandList {
+    /**
+     * 
+     * @type {number}
+     * @memberof CommandList
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof CommandList
+     */
+    pageCount: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof CommandList
+     */
+    totalCount: number;
+    /**
+     * 
+     * @type {Array<CommandAttributes>}
+     * @memberof CommandList
+     */
+    items: Array<CommandAttributes>;
+}
+/**
+ * 
+ * @export
+ * @interface CommandListAllOf
+ */
+export interface CommandListAllOf {
+    /**
+     * 
+     * @type {Array<CommandAttributes>}
+     * @memberof CommandListAllOf
+     */
+    items: Array<CommandAttributes>;
 }
 /**
  * 
@@ -166,19 +228,44 @@ export interface List {
      * @type {number}
      * @memberof List
      */
-    page?: number;
+    page: number;
     /**
      * 
      * @type {number}
      * @memberof List
      */
-    pageCount?: number;
+    pageCount: number;
     /**
      * 
      * @type {number}
      * @memberof List
      */
-    totalCount?: number;
+    totalCount: number;
+}
+/**
+ * 
+ * @export
+ * @interface NotFound
+ */
+export interface NotFound {
+    /**
+     * 
+     * @type {string}
+     * @memberof NotFound
+     */
+    type?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof NotFound
+     */
+    title?: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof NotFound
+     */
+    status?: number;
 }
 /**
  * 
@@ -250,18 +337,142 @@ export interface Unauthorized {
 export const ChannelsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * List commands for a channel
-         * @summary List channel commands
+         * List all bot channels.
+         * @summary List channels
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getChannels(page?: number, perPage?: number, options: any = {}): RequestArgs {
+            const localVarPath = `/channels`;
+            const localVarUrlObj = globalImportUrl.parse(localVarPath, true);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication accessCode required
+            // oauth required
+            if (configuration && configuration.accessToken) {
+                const localVarAccessTokenValue = typeof configuration.accessToken === 'function'
+                    ? configuration.accessToken("accessCode", ["openid"])
+                    : configuration.accessToken;
+                localVarHeaderParameter["Authorization"] = "Bearer " + localVarAccessTokenValue;
+            }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (perPage !== undefined) {
+                localVarQueryParameter['perPage'] = perPage;
+            }
+
+
+    
+            localVarUrlObj.query = {...localVarUrlObj.query, ...localVarQueryParameter, ...options.query};
+            // fix override query string Detail: https://stackoverflow.com/a/7517673/1077943
+            delete localVarUrlObj.search;
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...options.headers};
+
+            return {
+                url: globalImportUrl.format(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * ChannelsApi - functional programming interface
+ * @export
+ */
+export const ChannelsApiFp = function(configuration?: Configuration) {
+    return {
+        /**
+         * List all bot channels.
+         * @summary List channels
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getChannels(page?: number, perPage?: number, options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<List & object> {
+            const localVarAxiosArgs = ChannelsApiAxiosParamCreator(configuration).getChannels(page, perPage, options);
+            return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
+                const axiosRequestArgs = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
+                return axios.request(axiosRequestArgs);
+            };
+        },
+    }
+};
+
+/**
+ * ChannelsApi - factory interface
+ * @export
+ */
+export const ChannelsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    return {
+        /**
+         * List all bot channels.
+         * @summary List channels
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getChannels(page?: number, perPage?: number, options?: any) {
+            return ChannelsApiFp(configuration).getChannels(page, perPage, options)(axios, basePath);
+        },
+    };
+};
+
+/**
+ * ChannelsApi - object-oriented interface
+ * @export
+ * @class ChannelsApi
+ * @extends {BaseAPI}
+ */
+export class ChannelsApi extends BaseAPI {
+    /**
+     * List all bot channels.
+     * @summary List channels
+     * @param {number} [page] Requested page number
+     * @param {number} [perPage] Item per page
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ChannelsApi
+     */
+    public getChannels(page?: number, perPage?: number, options?: any) {
+        return ChannelsApiFp(this.configuration).getChannels(page, perPage, options)(this.axios, this.basePath);
+    }
+
+}
+
+
+/**
+ * CommandsApi - axios parameter creator
+ * @export
+ */
+export const CommandsApiAxiosParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * Get details for a bot command.
+         * @summary List commands
          * @param {number} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getChannelCommands(id: number, options: any = {}): RequestArgs {
+        getCommand(id: number, options: any = {}): RequestArgs {
             // verify required parameter 'id' is not null or undefined
             if (id === null || id === undefined) {
-                throw new RequiredError('id','Required parameter id was null or undefined when calling getChannelCommands.');
+                throw new RequiredError('id','Required parameter id was null or undefined when calling getCommand.');
             }
-            const localVarPath = `/channels/{id}/commands`
+            const localVarPath = `/commands/{id}`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             const localVarUrlObj = globalImportUrl.parse(localVarPath, true);
             let baseOptions;
@@ -294,156 +505,14 @@ export const ChannelsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * List all bot channels.
-         * @summary List channels
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getChannels(options: any = {}): RequestArgs {
-            const localVarPath = `/channels`;
-            const localVarUrlObj = globalImportUrl.parse(localVarPath, true);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication accessCode required
-            // oauth required
-            if (configuration && configuration.accessToken) {
-                const localVarAccessTokenValue = typeof configuration.accessToken === 'function'
-                    ? configuration.accessToken("accessCode", ["openid"])
-                    : configuration.accessToken;
-                localVarHeaderParameter["Authorization"] = "Bearer " + localVarAccessTokenValue;
-            }
-
-
-    
-            localVarUrlObj.query = {...localVarUrlObj.query, ...localVarQueryParameter, ...options.query};
-            // fix override query string Detail: https://stackoverflow.com/a/7517673/1077943
-            delete localVarUrlObj.search;
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...options.headers};
-
-            return {
-                url: globalImportUrl.format(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-    }
-};
-
-/**
- * ChannelsApi - functional programming interface
- * @export
- */
-export const ChannelsApiFp = function(configuration?: Configuration) {
-    return {
-        /**
-         * List commands for a channel
-         * @summary List channel commands
-         * @param {number} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getChannelCommands(id: number, options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<List & object> {
-            const localVarAxiosArgs = ChannelsApiAxiosParamCreator(configuration).getChannelCommands(id, options);
-            return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
-                const axiosRequestArgs = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
-                return axios.request(axiosRequestArgs);
-            };
-        },
-        /**
-         * List all bot channels.
-         * @summary List channels
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getChannels(options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<List & object> {
-            const localVarAxiosArgs = ChannelsApiAxiosParamCreator(configuration).getChannels(options);
-            return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
-                const axiosRequestArgs = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
-                return axios.request(axiosRequestArgs);
-            };
-        },
-    }
-};
-
-/**
- * ChannelsApi - factory interface
- * @export
- */
-export const ChannelsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
-    return {
-        /**
-         * List commands for a channel
-         * @summary List channel commands
-         * @param {number} id 
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getChannelCommands(id: number, options?: any) {
-            return ChannelsApiFp(configuration).getChannelCommands(id, options)(axios, basePath);
-        },
-        /**
-         * List all bot channels.
-         * @summary List channels
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getChannels(options?: any) {
-            return ChannelsApiFp(configuration).getChannels(options)(axios, basePath);
-        },
-    };
-};
-
-/**
- * ChannelsApi - object-oriented interface
- * @export
- * @class ChannelsApi
- * @extends {BaseAPI}
- */
-export class ChannelsApi extends BaseAPI {
-    /**
-     * List commands for a channel
-     * @summary List channel commands
-     * @param {number} id 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof ChannelsApi
-     */
-    public getChannelCommands(id: number, options?: any) {
-        return ChannelsApiFp(this.configuration).getChannelCommands(id, options)(this.axios, this.basePath);
-    }
-
-    /**
-     * List all bot channels.
-     * @summary List channels
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof ChannelsApi
-     */
-    public getChannels(options?: any) {
-        return ChannelsApiFp(this.configuration).getChannels(options)(this.axios, this.basePath);
-    }
-
-}
-
-
-/**
- * CommandsApi - axios parameter creator
- * @export
- */
-export const CommandsApiAxiosParamCreator = function (configuration?: Configuration) {
-    return {
-        /**
          * List all bot commands.
          * @summary List commands
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getCommands(options: any = {}): RequestArgs {
+        getCommands(page?: number, perPage?: number, options: any = {}): RequestArgs {
             const localVarPath = `/commands`;
             const localVarUrlObj = globalImportUrl.parse(localVarPath, true);
             let baseOptions;
@@ -461,6 +530,14 @@ export const CommandsApiAxiosParamCreator = function (configuration?: Configurat
                     ? configuration.accessToken("accessCode", ["openid"])
                     : configuration.accessToken;
                 localVarHeaderParameter["Authorization"] = "Bearer " + localVarAccessTokenValue;
+            }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
+            }
+
+            if (perPage !== undefined) {
+                localVarQueryParameter['perPage'] = perPage;
             }
 
 
@@ -485,13 +562,29 @@ export const CommandsApiAxiosParamCreator = function (configuration?: Configurat
 export const CommandsApiFp = function(configuration?: Configuration) {
     return {
         /**
-         * List all bot commands.
+         * Get details for a bot command.
          * @summary List commands
+         * @param {number} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getCommands(options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<List & object> {
-            const localVarAxiosArgs = CommandsApiAxiosParamCreator(configuration).getCommands(options);
+        getCommand(id: number, options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<CommandAttributes & CommandTemplate & object> {
+            const localVarAxiosArgs = CommandsApiAxiosParamCreator(configuration).getCommand(id, options);
+            return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
+                const axiosRequestArgs = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
+                return axios.request(axiosRequestArgs);
+            };
+        },
+        /**
+         * List all bot commands.
+         * @summary List commands
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCommands(page?: number, perPage?: number, options?: any): (axios?: AxiosInstance, basePath?: string) => AxiosPromise<CommandList> {
+            const localVarAxiosArgs = CommandsApiAxiosParamCreator(configuration).getCommands(page, perPage, options);
             return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
                 const axiosRequestArgs = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
                 return axios.request(axiosRequestArgs);
@@ -507,13 +600,25 @@ export const CommandsApiFp = function(configuration?: Configuration) {
 export const CommandsApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
     return {
         /**
-         * List all bot commands.
+         * Get details for a bot command.
          * @summary List commands
+         * @param {number} id 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getCommands(options?: any) {
-            return CommandsApiFp(configuration).getCommands(options)(axios, basePath);
+        getCommand(id: number, options?: any) {
+            return CommandsApiFp(configuration).getCommand(id, options)(axios, basePath);
+        },
+        /**
+         * List all bot commands.
+         * @summary List commands
+         * @param {number} [page] Requested page number
+         * @param {number} [perPage] Item per page
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getCommands(page?: number, perPage?: number, options?: any) {
+            return CommandsApiFp(configuration).getCommands(page, perPage, options)(axios, basePath);
         },
     };
 };
@@ -526,14 +631,28 @@ export const CommandsApiFactory = function (configuration?: Configuration, baseP
  */
 export class CommandsApi extends BaseAPI {
     /**
-     * List all bot commands.
+     * Get details for a bot command.
      * @summary List commands
+     * @param {number} id 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof CommandsApi
      */
-    public getCommands(options?: any) {
-        return CommandsApiFp(this.configuration).getCommands(options)(this.axios, this.basePath);
+    public getCommand(id: number, options?: any) {
+        return CommandsApiFp(this.configuration).getCommand(id, options)(this.axios, this.basePath);
+    }
+
+    /**
+     * List all bot commands.
+     * @summary List commands
+     * @param {number} [page] Requested page number
+     * @param {number} [perPage] Item per page
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CommandsApi
+     */
+    public getCommands(page?: number, perPage?: number, options?: any) {
+        return CommandsApiFp(this.configuration).getCommands(page, perPage, options)(this.axios, this.basePath);
     }
 
 }

@@ -34,9 +34,21 @@
     }
 
     .opblock {
+        border-radius: 0;
+
         .opblock-section-header {
             background: $opblock-isopen-section-header-background-color;
             box-shadow: none;
+        }
+    }
+
+    section.models .model-container {
+        background-color: var(--color-neutral-800);
+        border: 1px solid transparent;
+
+        &:hover {
+            background-color: var(--color-neutral-800);
+            border-color: var(--color-primary-700);
         }
     }
 

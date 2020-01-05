@@ -7,15 +7,13 @@
     "dev": "next",
     "build": "next build",
     "start": "next start",
-    "codegen": "openapi-generator generate -i public/spec.yaml -g typescript-axios -o api-client/",
+    "codegen": "openapi-generator generate -i public/spec.yml -g typescript-axios -o api-client/",
     "swaggerTheme": "node-sass --include-path node_modules styles/swagger/main.scss styles/swagger/main.css",
     "watchSwaggerTheme": "node-sass --include-path node_modules --watch styles/swagger/main.scss styles/swagger/main.css"
   },
   "author": "cerebellum42 <cere@fastmail.fm>",
   "dependencies": {
     "@fullhuman/postcss-purgecss": "^1.3.0",
-    "@types/node": "^13.1.2",
-    "@types/react": "^16.9.17",
     "@zeit/next-css": "^1.0.1",
     "autoprefixer": "^9.7.3",
     "axios": "^0.19.0",
@@ -26,6 +24,8 @@
     "postcss-preset-env": "^6.7.0",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
+    "react-spinners": "^0.8.0",
+    "react-table": "^7.0.0-rc.15",
     "styled-jsx-plugin-postcss": "^2.0.1",
     "swagger-ui-react": "^3.24.3",
     "tailwindcss": "^1.1.4",
@@ -34,6 +34,9 @@
   },
   "devDependencies": {
     "@openapitools/openapi-generator-cli": "^1.0.8-4.2.2",
+    "@types/node": "^13.1.2",
+    "@types/react": "^16.9.17",
+    "@types/react-table": "^7.0.2",
     "@types/swagger-ui-react": "^3.23.0",
     "prettier": "^1.19.1",
     "tachyons-sass": "^4.9.5"

@@ -1,10 +1,10 @@
 import Page from '../layouts/page'
-import Navigation from "../components/navigation";
+import TopBar from "../components/topBar";
 import PageContent from "../layouts/pageContent";
 
 export default () => (
     <Page>
-        <Navigation/>
+        <TopBar/>
         <PageContent>
             <p>Home</p>
         </PageContent>

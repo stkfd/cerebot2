@@ -6880,7 +6880,7 @@
   .swagger-ui .model-title {
     font-size: 16px;
     font-family: sans-serif;
-    color: #505050; }
+    color: var(--color-neutral-200); }
   .swagger-ui .model-deprecated-warning {
     font-size: 16px;
     font-weight: 600;
@@ -7227,9 +7227,17 @@
     margin: 0; }
     .swagger-ui .opblock-tag:hover {
       background-color: var(--color-neutral-900); }
-  .swagger-ui .opblock .opblock-section-header {
-    background: rgba(255, 255, 255, 0.03);
-    box-shadow: none; }
+  .swagger-ui .opblock {
+    border-radius: 0; }
+    .swagger-ui .opblock .opblock-section-header {
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: none; }
+  .swagger-ui section.models .model-container {
+    background-color: var(--color-neutral-800);
+    border: 1px solid transparent; }
+    .swagger-ui section.models .model-container:hover {
+      background-color: var(--color-neutral-800);
+      border-color: var(--color-primary-700); }
   .swagger-ui .scheme-container {
     box-shadow: none; }
   .swagger-ui .dialog-ux .modal-ux-header {
