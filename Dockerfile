@@ -17,6 +17,9 @@ RUN mkdir persistence/src && touch persistence/src/lib.rs
 ADD util/Cargo.toml /cerebot/util/
 RUN mkdir util/src && touch util/src/lib.rs
 
+ADD unogs_client/Cargo.toml /cerebot/unogs_client/
+RUN mkdir unogs_client/src && touch unogs_client/src/lib.rs
+
 ADD web/backend/Cargo.toml /cerebot/web/backend/
 RUN mkdir web/backend/src && echo "fn main() { }" > web/backend/src/main.rs
 
