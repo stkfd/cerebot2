@@ -47,8 +47,7 @@ htmlescape = "0.3.1"
 once_cell = "1.2"
 
 # lazy initialize to load db data in each event
-async-double-checked-cell = { path = "../../double-checked-cell" }
-#async-double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
+async-double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
 
 # used for reloadable state objects
 arc-swap = "0.4.4"

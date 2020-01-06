@@ -327,6 +327,7 @@ checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 [[package]]
 name = "async-double-checked-cell"
 version = "2.0.2"
+source = "git+https://github.com/cere42/async-double-checked-cell.git#6e3fd511669046277e4275c824bac04d2604b4d2"
 dependencies = [
  "futures-util",
  "unreachable",
