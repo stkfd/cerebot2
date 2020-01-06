@@ -83,7 +83,7 @@ impl std::error::Error for LazyFetchError {}
 
 impl std::fmt::Display for LazyFetchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.source.fmt(f)
+        write!(f, "{:?}", self.source)
     }
 }
 

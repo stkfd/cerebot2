@@ -8,7 +8,6 @@ use std::result::Result as StdResult;
 use dotenv::dotenv;
 
 use crate::cerebot::{Cerebot, RunResult};
-use crate::config::CerebotConfig;
 use crate::error::Error;
 
 mod cerebot;
@@ -34,8 +33,7 @@ fn main() {
         .unwrap();
 
     runtime.block_on(async move {
-        let config = CerebotConfig::load().unwrap();
-        let mut bot = Cerebot::create(config).unwrap();
+        let mut bot = Cerebot::create().unwrap();
         while let RunResult::Restart = bot.run().await.unwrap() {}
     });
 }

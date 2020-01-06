@@ -24,11 +24,11 @@ use crate::Result;
 
 pub struct Cerebot {
     chat_client: TwitchClient,
-    config: CerebotConfig,
 }
 
 impl Cerebot {
-    pub fn create(config: CerebotConfig) -> Result<Self> {
+    pub fn create() -> Result<Self> {
+        let config = CerebotConfig::get()?;
         Ok(Cerebot {
             chat_client: TwitchClientConfigBuilder::default()
                 .username(config.username().to_string())
@@ -36,13 +36,13 @@ impl Cerebot {
                 .build()
                 .map_err(Error::TmiConfig)?
                 .into(),
-            config,
         })
     }
 
     pub async fn run(&mut self) -> Result<RunResult> {
+        let config = CerebotConfig::get()?;
         debug!("Creating database connection pool...");
-        let db_context = DbContext::create(self.config.db(), self.config.redis()).await?;
+        let db_context = DbContext::create(config.db(), config.redis()).await?;
         info!("Database connection pool created.");
 
         info!("Running migrations");

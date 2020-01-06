@@ -12,7 +12,7 @@ use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
-use crate::impl_redis_bincode;
+use crate::impl_redis_bincode_int;
 use crate::redis_values::*;
 use crate::schema::chat_events;
 use crate::DbContext;
@@ -55,7 +55,7 @@ pub struct NewChatEvent {
     pub received_at: DateTime<FixedOffset>,
 }
 
-impl_redis_bincode!(NewChatEvent);
+impl_redis_bincode_int!(NewChatEvent);
 
 /// Convert any chat event into a db entry and save the db entry in the log queue, to
 /// be persisted into the database at a later time

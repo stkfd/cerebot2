@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 
@@ -6,10 +7,10 @@ use serde::{Deserialize, Deserializer};
 use thiserror::Error;
 
 use crate::genre_ids::Genre;
-use std::convert::TryFrom;
 
 const BASE_URL: &str = "https://unogs-unogs-v1.p.rapidapi.com/api.cgi";
 
+#[derive(Debug)]
 pub struct UnogsClient {
     client: reqwest::Client,
 }
@@ -66,9 +67,9 @@ pub struct UnogsResponse<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct QuotaState {
     /// Total allowed requests in the current period
-    requests_limit: isize,
+    pub requests_limit: isize,
     /// Remaining allowed requests before shutoff or overage charges
-    requests_remaining: isize,
+    pub requests_remaining: isize,
 }
 
 impl TryFrom<&HeaderMap> for QuotaState {
@@ -97,19 +98,17 @@ impl TryFrom<&HeaderMap> for QuotaState {
 }
 
 /// Generic list of items in a response
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct List<T> {
     /// Number of items in the response
-    #[serde(deserialize_with = "from_str")]
-    count: usize,
+    #[serde(deserialize_with = "deserialize_from_str")]
+    pub count: usize,
     /// Response items
-    items: Vec<T>,
+    pub items: Vec<T>,
 }
 
-pub mod genre_ids;
-
-fn from_str<'de, T, D>(deserializer: D) -> std::result::Result<T, D::Error>
+pub fn deserialize_from_str<'de, T, D>(deserializer: D) -> std::result::Result<T, D::Error>
 where
     T: FromStr,
     T::Err: fmt::Display,
@@ -118,3 +117,5 @@ where
     let s = String::deserialize(deserializer)?;
     T::from_str(&s).map_err(serde::de::Error::custom)
 }
+
+pub mod genre_ids;

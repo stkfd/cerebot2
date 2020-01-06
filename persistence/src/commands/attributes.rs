@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use diesel::backend::Backend;
 use diesel::deserialize::FromSql;
+use diesel::dsl::count;
 use diesel::prelude::*;
+use diesel::sql_query;
 use diesel::sql_types::{Array, Integer, Text};
 use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
@@ -15,10 +17,8 @@ use crate::commands::channel_config::ChannelCommandConfigNamed;
 use crate::commands::templates::CommandTemplate;
 use crate::schema::*;
 use crate::Result;
-use crate::{impl_redis_bincode, OffsetParameters};
+use crate::{impl_redis_bincode_int, OffsetParameters};
 use crate::{DbPool, Error, RedisPool};
-use diesel::dsl::count;
-use diesel::sql_query;
 
 /// DB persisted command attributes
 #[derive(Serialize, Deserialize, Debug, Clone, Queryable, QueryableByName)]
@@ -251,7 +251,7 @@ group by a.id"#,
     }
 }
 
-impl_redis_bincode!(CommandAttributes);
+impl_redis_bincode_int!(CommandAttributes);
 
 impl Cacheable<&str> for CommandAttributes {
     fn cache_key(&self) -> String {

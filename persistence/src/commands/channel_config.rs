@@ -6,7 +6,7 @@ use tokio_diesel::{AsyncRunQueryDsl, OptionalExtension};
 
 use crate::cache::Cacheable;
 use crate::commands::attributes::DurationMillis;
-use crate::impl_redis_bincode;
+use crate::impl_redis_bincode_int;
 use crate::schema::*;
 use crate::DbContext;
 use crate::Result;
@@ -56,7 +56,7 @@ impl ChannelCommandConfig {
     }
 }
 
-impl_redis_bincode!(ChannelCommandConfig);
+impl_redis_bincode_int!(ChannelCommandConfig);
 
 impl Cacheable<(i32, i32)> for ChannelCommandConfig {
     fn cache_key(&self) -> String {

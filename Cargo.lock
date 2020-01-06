@@ -327,7 +327,6 @@ checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 [[package]]
 name = "async-double-checked-cell"
 version = "2.0.2"
-source = "git+https://github.com/cere42/async-double-checked-cell.git#6e3fd511669046277e4275c824bac04d2604b4d2"
 dependencies = [
  "futures-util",
  "unreachable",
@@ -582,6 +581,7 @@ dependencies = [
  "arc-swap",
  "async-double-checked-cell",
  "async-trait",
+ "bincode",
  "chrono",
  "derive_builder",
  "dirs",
@@ -589,9 +589,11 @@ dependencies = [
  "env_logger",
  "fnv",
  "futures",
+ "htmlescape",
  "log",
  "once_cell",
  "persistence",
+ "rand",
  "regex",
  "serde",
  "serde_json",
@@ -601,6 +603,7 @@ dependencies = [
  "tmi-rs",
  "tokio",
  "toml",
+ "unogs_client",
  "util",
  "uuid",
 ]
@@ -1228,6 +1231,12 @@ dependencies = [
  "libc",
  "winutil",
 ]
+
+[[package]]
+name = "htmlescape"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9025058dae765dee5070ec375f591e2ba14638c63feff74f13805a72e523163"
 
 [[package]]
 name = "http"

@@ -32,6 +32,18 @@ pub trait Cacheable<Id> {
             .map_err(Into::into)
     }
 
+    async fn cache_exists(pool: &RedisPool, id: Id) -> Result<bool>
+    where
+        Id: 'static + Send,
+        Self: Sized + FromRedisValue + Send + 'static,
+    {
+        pool.get()
+            .await
+            .exists(Self::cache_key_from_id(id))
+            .await
+            .map_err(Into::into)
+    }
+
     async fn cache_get(pool: &RedisPool, id: Id) -> Result<Option<Self>>
     where
         Id: 'static + Send,

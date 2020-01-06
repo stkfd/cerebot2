@@ -1,33 +1,20 @@
-use std::fmt;
-
 use persistence::commands::permission::PermissionRequirement;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CommandError {
+    #[error("Reply error: {0}")]
     ReplyError(&'static str),
+    #[error("Quote mismatch in command arguments")]
     QuoteMismatch,
+    #[error("{0}")]
     ArgumentError(structopt::clap::Error),
+    #[error("Permission requirement {0:?} is not fulfilled")]
     PermissionRequired(PermissionRequirement),
-}
-
-impl std::error::Error for CommandError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            CommandError::ArgumentError(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for CommandError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommandError::ReplyError(msg) => write!(f, "Reply error: {}", msg),
-            CommandError::ArgumentError(e) => write!(f, "{}", e),
-            CommandError::PermissionRequired(req) => {
-                write!(f, "Permission requirement {:?} is not fulfilled", req)
-            }
-            CommandError::QuoteMismatch => write!(f, "Quote mismatch in arguments"),
-        }
-    }
+    #[error("Netflix API error: {0}")]
+    UnogsError(#[from] unogs_client::Error),
+    #[error("RapidApi key is not configured")]
+    RapidApiNotConfigured,
+    #[error("RapidApi daily request quota exceeded")]
+    RapidApiQuotaLimit,
 }

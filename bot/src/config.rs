@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 use crate::Result;
+use once_cell::sync::OnceCell;
 
 #[derive(Debug, Clone, Builder)]
 #[builder(derive(Serialize, Deserialize))]
@@ -14,6 +15,8 @@ pub struct CerebotConfig {
     username: String,
     db: String,
     redis: String,
+    #[builder(default, setter(strip_option))]
+    rapidapi_key: Option<String>,
 }
 
 impl CerebotConfig {
@@ -31,6 +34,10 @@ impl CerebotConfig {
 
     pub fn redis(&self) -> &str {
         &self.redis
+    }
+
+    pub fn rapidapi_key(&self) -> Option<&str> {
+        self.rapidapi_key.as_ref().map(|s| s.as_str())
     }
 
     /// Load the bot's configuration. Attempts to load config files, by order of preference:
@@ -89,4 +96,10 @@ impl CerebotConfig {
 
         builder.build().map_err(Error::Config)
     }
+
+    pub fn get() -> Result<&'static CerebotConfig> {
+        INSTANCE.get_or_try_init(CerebotConfig::load)
+    }
 }
+
+static INSTANCE: OnceCell<CerebotConfig> = OnceCell::new();

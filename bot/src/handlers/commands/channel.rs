@@ -29,105 +29,20 @@ impl CommandHandler for ChannelManagerCommand {
 
     async fn run(&self, cmd: &CommandContext<'_>) -> Result<()> {
         let args = cmd.parse_args::<ChannelCommandArgs>(&self.ctx).await?;
-        let mut sender = &self.ctx.sender;
         if let Some(args) = args {
             match args {
-                ChannelCommandArgs::Info { channel } => {
-                    cmd.check_permissions(&self.ctx, &["channels:read"], true)
-                        .await?;
-
-                    let channel_info = Channel::get(&self.ctx.db_context, &channel).await?;
-                    let reply = format!("{:?}", channel_info);
-                    cmd.reply(&reply, sender).await?;
-                }
+                ChannelCommandArgs::Info { channel } => self.channel_info(cmd, &channel).await?,
                 ChannelCommandArgs::Update { channel, settings } => {
-                    cmd.check_permissions(&self.ctx, &["channels:manage"], true)
-                        .await?;
-
-                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
-                    {
-                        // update DB
-                        let updated_channel = Channel::update_settings(
-                            &self.ctx.db_context,
-                            &channel_data.name,
-                            settings.into_update_data(),
-                        )
-                        .await?;
-
-                        // update the bot's internal channel map
-                        self.ctx
-                            .update_channel(ChannelInfo {
-                                data: updated_channel,
-                                state: self
-                                    .ctx
-                                    .get_channel(&channel_data.name)
-                                    .await
-                                    .and_then(|c| c.state.clone()),
-                            })
-                            .await;
-                        cmd.reply("Channel updated.", sender).await?;
-                    } else {
-                        cmd.reply("No channel with that name found.", sender)
-                            .await?;
-                    }
+                    self.update_channel(cmd, &channel, settings).await?
                 }
                 ChannelCommandArgs::New { channel, settings } => {
-                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
-                        .await?;
-
-                    let inserted_channel = Channel::create_channel(
-                        &self.ctx.db_context,
-                        settings.into_insert_data(channel.clone()),
-                    )
-                    .await?;
-
-                    // update the bot's internal channel map
-                    self.ctx
-                        .update_channel(ChannelInfo {
-                            data: inserted_channel,
-                            state: None,
-                        })
-                        .await;
-
-                    // join the channel if join on start is set
-                    if let Some(channel_info) = self.ctx.get_channel(&channel).await {
-                        if channel_info.data.join_on_start {
-                            cmd.reply("Channel created, joining.", sender).await?;
-                            sender
-                                .send(ClientMessage::join(channel_info.data.name.as_str()))
-                                .await?;
-                        } else {
-                            cmd.reply("Channel created.", sender).await?;
-                        }
-                    }
+                    self.create_channel(cmd, &channel, settings).await?;
                 }
                 ChannelCommandArgs::Join { channel } => {
-                    cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
-                        .await?;
-
-                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
-                    {
-                        sender
-                            .send(ClientMessage::join(channel_data.name.as_str()))
-                            .await?;
-
-                        let reply = format!("Joined {}!", channel_data.name);
-                        cmd.reply(&reply, &self.ctx.sender).await?;
-                    } else {
-                        cmd.reply("Channel not found.", &self.ctx.sender).await?;
-                    }
+                    self.join_channel(cmd, &channel).await?;
                 }
                 ChannelCommandArgs::Part { channel } => {
-                    if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await?
-                    {
-                        sender
-                            .send(ClientMessage::Part(channel_data.name.clone()))
-                            .await?;
-                        let reply = format!("Left {}!", channel_data.name);
-                        cmd.reply(&reply, &self.ctx.sender).await?;
-                    } else {
-                        cmd.reply("Channel not found.", &self.ctx.sender).await?;
-                    }
+                    self.part_channel(cmd, &channel).await?;
                 }
             };
             Ok(())
@@ -275,5 +190,122 @@ impl ChannelSettingsArgs {
                 None
             },
         }
+    }
+}
+
+impl ChannelManagerCommand {
+    async fn channel_info(&self, cmd: &CommandContext<'_>, channel: &str) -> Result<()> {
+        cmd.check_permissions(&self.ctx, &["channels:read"], true)
+            .await?;
+
+        let channel_info = Channel::get(&self.ctx.db_context, &channel).await?;
+        let reply = format!("{:?}", channel_info);
+        cmd.reply(&reply, &self.ctx.sender).await?;
+        Ok(())
+    }
+
+    async fn join_channel(&self, cmd: &CommandContext<'_>, channel: &str) -> Result<()> {
+        cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
+            .await?;
+
+        if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await? {
+            (&self.ctx.sender)
+                .send(ClientMessage::join(channel_data.name.as_str()))
+                .await?;
+
+            let reply = format!("Joined {}!", channel_data.name);
+            cmd.reply(&reply, &self.ctx.sender).await?;
+        } else {
+            cmd.reply("Channel not found.", &self.ctx.sender).await?;
+        }
+        Ok(())
+    }
+
+    async fn part_channel(&self, cmd: &CommandContext<'_>, channel: &str) -> Result<()> {
+        if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await? {
+            (&self.ctx.sender)
+                .send(ClientMessage::Part(channel_data.name.clone()))
+                .await?;
+            let reply = format!("Left {}!", channel_data.name);
+            cmd.reply(&reply, &self.ctx.sender).await?;
+        } else {
+            cmd.reply("Channel not found.", &self.ctx.sender).await?;
+        }
+        Ok(())
+    }
+
+    async fn update_channel(
+        &self,
+        cmd: &CommandContext<'_>,
+        channel: &str,
+        settings: ChannelSettingsArgs,
+    ) -> Result<()> {
+        cmd.check_permissions(&self.ctx, &["channels:manage"], true)
+            .await?;
+
+        if let Some(channel_data) = Channel::get(&self.ctx.db_context, &channel).await? {
+            // update DB
+            let updated_channel = Channel::update_settings(
+                &self.ctx.db_context,
+                &channel_data.name,
+                settings.into_update_data(),
+            )
+            .await?;
+
+            // update the bot's internal channel map
+            self.ctx
+                .update_channel(ChannelInfo {
+                    data: updated_channel,
+                    state: self
+                        .ctx
+                        .get_channel(&channel_data.name)
+                        .await
+                        .and_then(|c| c.state.clone()),
+                })
+                .await;
+            cmd.reply("Channel updated.", &self.ctx.sender).await?;
+        } else {
+            cmd.reply("No channel with that name found.", &self.ctx.sender)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn create_channel(
+        &self,
+        cmd: &CommandContext<'_>,
+        channel: &str,
+        settings: ChannelSettingsArgs,
+    ) -> Result<()> {
+        cmd.check_permissions(&self.ctx, &["channels:manage", "channels:join"], true)
+            .await?;
+
+        let inserted_channel = Channel::create_channel(
+            &self.ctx.db_context,
+            settings.into_insert_data(channel.to_string()),
+        )
+        .await?;
+
+        // update the bot's internal channel map
+        self.ctx
+            .update_channel(ChannelInfo {
+                data: inserted_channel,
+                state: None,
+            })
+            .await;
+
+        // join the channel if join on start is set
+        if let Some(channel_info) = self.ctx.get_channel(&channel).await {
+            if channel_info.data.join_on_start {
+                cmd.reply("Channel created, joining.", &self.ctx.sender)
+                    .await?;
+                (&self.ctx.sender)
+                    .send(ClientMessage::join(channel_info.data.name.as_str()))
+                    .await?;
+            } else {
+                cmd.reply("Channel created.", &self.ctx.sender).await?;
+            }
+        }
+        Ok(())
     }
 }

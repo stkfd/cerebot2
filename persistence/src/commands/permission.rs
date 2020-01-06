@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
-use crate::impl_redis_bincode;
+use crate::impl_redis_bincode_int;
 use crate::{DbPool, Result};
 
 /// Required permissions for a command
@@ -36,7 +36,7 @@ impl CommandPermissionSet {
     }
 }
 
-impl_redis_bincode!(CommandPermissionSet);
+impl_redis_bincode_int!(CommandPermissionSet);
 
 impl Cacheable<i32> for CommandPermissionSet {
     fn cache_key(&self) -> String {

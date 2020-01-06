@@ -2,14 +2,14 @@ use std::fmt;
 use std::fmt::Debug;
 
 use serde::de::{MapAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Genre {
     /// Title of the genre
-    name: String,
+    pub name: String,
     /// Netflix genre IDs belonging to that title
-    ids: Vec<usize>,
+    pub ids: Vec<usize>,
 }
 
 struct GenreVisitor;
@@ -27,13 +27,13 @@ impl<'de> Visitor<'de> for GenreVisitor {
     where
         A: MapAccess<'de>,
     {
-        return if let Some((name, ids)) = map.next_entry::<String, Vec<usize>>()? {
+        if let Some((name, ids)) = map.next_entry::<String, Vec<usize>>()? {
             Ok(Genre { name, ids })
         } else {
             Err(serde::de::Error::custom(
                 "Expected map containing a single item with an array value",
             ))
-        };
+        }
     }
 }
 

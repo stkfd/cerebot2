@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio_diesel::AsyncRunQueryDsl;
 
 use crate::cache::Cacheable;
-use crate::impl_redis_bincode;
+use crate::impl_redis_bincode_int;
 use crate::schema::users;
 use crate::DbContext;
 use crate::Result;
@@ -24,7 +24,7 @@ pub struct User {
     pub created_at: DateTime<Utc>,
 }
 
-impl_redis_bincode!(User);
+impl_redis_bincode_int!(User);
 
 #[derive(Insertable, Debug)]
 #[table_name = "users"]

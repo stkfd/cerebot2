@@ -29,6 +29,7 @@ use std::borrow::Cow;
 mod channel;
 mod command;
 pub mod error;
+mod netflix;
 mod reload;
 mod restart;
 mod say;
@@ -64,6 +65,7 @@ impl EventHandler<CbEvent> for CommandRouter {
             &templates::TemplateCommandHandler::create,
             &reload::ReloadCommandHandler::create,
             &restart::RestartCommandHandler::create,
+            &netflix::NetflixCommandHandler::create,
         ];
 
         init_command_router_permissions(ctx).await?;
