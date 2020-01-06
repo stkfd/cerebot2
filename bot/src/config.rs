@@ -94,6 +94,10 @@ impl CerebotConfig {
             builder.redis(redis);
         }
 
+        if let Ok(key) = env::var("RAPIDAPI_KEY") {
+            builder.rapidapi_key(key);
+        }
+
         builder.build().map_err(Error::Config)
     }
 
