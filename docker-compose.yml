@@ -8,7 +8,8 @@ services:
       CEREBOT_USERNAME: '$CEREBOT_USERNAME'
       DATABASE_URL: 'postgres://cerebot:${CEREBOT_DB_PASSWORD:-cerebot}@postgres:5432'
       REDIS_URL: 'redis:6379'
-      RUST_LOG: ${RUST_LOG}
+      RUST_LOG: '$RUST_LOG'
+      RAPIDAPI_KEY: '$RAPIDAPI_KEY'
     depends_on:
       - redis
       - postgres
