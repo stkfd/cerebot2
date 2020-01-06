@@ -43,12 +43,6 @@ impl CommandHandler for NetflixCommandHandler {
 
         let is_loaded = self.genre_list.load().is_some();
 
-        if let Some(quota) = &*self.quota.load() {
-            if quota.requests_remaining >= 0 {
-                return Err(CommandError::RapidApiQuotaLimit.into());
-            }
-        }
-
         if is_loaded {
             if !GenreList::cache_exists(redis, ()).await? {
                 self.fetch_genre_list().await?;
@@ -117,6 +111,12 @@ impl NetflixCommandHandler {
     }
 
     async fn fetch_genre_list(&self) -> Result<()> {
+        if let Some(quota) = &*self.quota.load() {
+            if quota.requests_remaining <= 0 {
+                return Err(CommandError::RapidApiQuotaLimit.into());
+            }
+        }
+
         let response = self
             .get_api_client()?
             .genre_ids()
