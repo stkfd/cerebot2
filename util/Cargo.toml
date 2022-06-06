@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 # needed for RwLock implementation borrowed from async-std
-crossbeam-utils = "0.7"
+crossbeam-utils = "0.8"
 slab = "0.4"
