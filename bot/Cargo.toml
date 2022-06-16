@@ -50,7 +50,7 @@ once_cell = "1.2"
 async-double-checked-cell = { git = "https://github.com/cere42/async-double-checked-cell.git" }
 
 # used for reloadable state objects
-arc-swap = "0.4.4"
+arc-swap = "0.4.8"
 
 # text command templating
 tera = "1"
